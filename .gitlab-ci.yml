@@ -121,22 +121,6 @@ check:syntax:
     script:
         - echo ${CI_COMMIT_BEFORE_SHA} ${CI_COMMIT_SHA} ${CI_COMMIT_REF_NAME} | hooks/pre-receive
 
-check:pipenv:linux-amd64:
-    stage: check
-    tags:
-        - linux
-        - amd64
-    script:
-        - pipenv sync
-
-check:pipenv:macos-amd64:
-    stage: check
-    tags:
-        - macos
-        - amd64
-    script:
-        - pipenv sync
-
 
 #-----------------------------------------------------------------------------------------------------------------------
 # DEBUG BUILD
@@ -152,7 +136,8 @@ build:debug:linux-amd64:
         - .shared
         - .use_cache
     script:
-        - cmake -S . -B build/${BUILD_TYPE}
+        - pipenv sync
+        - pipenv run cmake -S . -B build/${BUILD_TYPE}
           --fresh
           -G Ninja
           -DCMAKE_C_COMPILER=clang
@@ -162,8 +147,8 @@ build:debug:linux-amd64:
           -DWITH_V8=ON
           -DENABLE_SANITIZERS=ON
           -DENABLE_SANITY_FIELDS=ON
-        - cmake --build build/${BUILD_TYPE} --target Boost gitversion
-        - cmake --build build/${BUILD_TYPE} --target all unittest
+        - pipenv run cmake --build build/${BUILD_TYPE} --target Boost gitversion
+        - pipenv run cmake --build build/${BUILD_TYPE} --target all unittest
         - find build/${BUILD_TYPE}/third-party -name '*.so' -exec cp {} build/${BUILD_TYPE}/lib \; # collect shared libraries
         - find build/${BUILD_TYPE}/third-party -name '*.so.*' -exec cp {} build/${BUILD_TYPE}/lib \; # collect shared libraries
     artifacts:
@@ -182,7 +167,8 @@ build:debug:macos-amd64:
         - .shared
         - .use_cache
     script:
-        - cmake -S . -B build/${BUILD_TYPE}
+        - pipenv sync
+        - pipenv run cmake -S . -B build/${BUILD_TYPE}
           --fresh
           -G Ninja
           -DCMAKE_C_COMPILER=$(brew --prefix llvm@17)/bin/clang
@@ -192,8 +178,8 @@ build:debug:macos-amd64:
           -DWITH_V8=ON
           -DENABLE_SANITIZERS=ON
           -DENABLE_SANITY_FIELDS=ON
-        - cmake --build build/${BUILD_TYPE} --target Boost gitversion
-        - cmake --build build/${BUILD_TYPE} --target all unittest
+        - pipenv run cmake --build build/${BUILD_TYPE} --target Boost gitversion
+        - pipenv run cmake --build build/${BUILD_TYPE} --target all unittest
         - find build/${BUILD_TYPE}/third-party -name '*.dylib' -exec cp {} build/${BUILD_TYPE}/lib \; # collect shared libraries
         - find build/${BUILD_TYPE}/third-party -name '*.dylib.*' -exec cp {} build/${BUILD_TYPE}/lib \; # collect shared libraries
     artifacts:

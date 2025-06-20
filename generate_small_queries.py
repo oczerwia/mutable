@@ -4,7 +4,7 @@ import os
 import itertools
 import random
 
-def generate_tables_with_varied_overlaps(n, max_rows=500):
+def generate_tables_with_varied_overlaps(n, max_rows=200):
     """
     Generate n pandas DataFrames with different overlaps between pairs of tables.
     All tables share at least one common ID to ensure complete joins work.

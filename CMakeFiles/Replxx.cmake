@@ -17,5 +17,5 @@ ExternalProject_Add(
     CONFIGURE_HANDLED_BY_BUILD true
     INSTALL_COMMAND ""
 )
-include_directories(SYSTEM third-party/replxx/include)
+include_directories(SYSTEM "third-party/replxx-${REPLXX_VERSION}/include")
 link_directories(${CMAKE_CURRENT_BINARY_DIR}/third-party/src/Replxx-build)

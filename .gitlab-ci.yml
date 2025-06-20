@@ -171,7 +171,6 @@ build:debug:linux-amd64:
             - "build/${BUILD_TYPE}/bin/{lex,parse,check,shell,unittest}"
             - "build/${BUILD_TYPE}/lib/"
         expire_in: 1 day
-    dependencies: []
 
 build:debug:macos-amd64:
     stage: build:debug
@@ -201,7 +200,6 @@ build:debug:macos-amd64:
             - "build/${BUILD_TYPE}/bin/{lex,parse,check,shell,unittest}"
             - "build/${BUILD_TYPE}/lib/"
         expire_in: 1 day
-    dependencies: []
 
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -336,7 +334,6 @@ build:release:linux-amd64:
         paths:
             - "mutable"
         expire_in: 1 day
-    dependencies: []
 
 build:release:macos-amd64:
     stage: build:release
@@ -369,7 +366,6 @@ build:release:macos-amd64:
         paths:
             - "mutable"
         expire_in: 1 day
-    dependencies: []
 
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -464,12 +460,12 @@ report:doxygen:
           when: on_success
         - if: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /report/i
           when: on_success
-    dependencies: []
 
 report:coverage:
     stage: report
     tags:
         - nginx
+    needs: [ "build:debug:linux-amd64" ]
     script:
         - utils/coverage.sh
         - rm -rf /srv/http/mutable/coverage
@@ -484,7 +480,6 @@ report:coverage:
           when: on_success
         - if: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /coverage/i
           when: on_success
-    dependencies: []
 
 
 #-----------------------------------------------------------------------------------------------------------------------

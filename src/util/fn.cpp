@@ -2,11 +2,9 @@
 
 #if __linux
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #elif __APPLE__
 #include <string.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #endif
 
@@ -125,12 +123,9 @@ bool m::like(const std::string &str, const std::string &pattern, const char esca
 void m::exec(const char *executable, std::initializer_list<const char*> args)
 {
 #if __linux || __APPLE__
-    pid_t pid = fork();
-    if (pid > 0) {
-        /* parent: wait for child to finish */
-        int status;
-        waitpid(pid, &status, 0);
-    } else if (pid == 0) {
+    if (fork()) {
+        /* parent, nothing to be done */
+    } else {
         /* child */
         char **c_args = new char*[args.size() + 2];
         char **p = c_args;

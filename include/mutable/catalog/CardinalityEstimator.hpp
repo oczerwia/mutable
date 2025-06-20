@@ -13,6 +13,20 @@
 namespace m
 {
 
+    struct CardinalityRange
+    {
+        double lower;
+        double upper;
+
+        double mean() const { return (lower + upper) / 2.0; }
+        double delta() const { return upper - lower; }
+        double adjusted_estimate() const { return mean() + delta(); }
+
+        CardinalityRange() : lower(0), upper(0) {}
+        explicit CardinalityRange(double point) : lower(point), upper(point) {}
+        CardinalityRange(double l, double u) : lower(l), upper(u) {}
+    };
+
     namespace ast
     {
 
@@ -226,65 +240,6 @@ namespace m
         void print(std::ostream &out) const override;
     };
 
-    /**
-     *  Container for cardinality range
-     */
-    struct CardinalityRange
-    {
-        double lower;
-        double upper;
-    };
-    /**
-     * RangeCartesianProductEstimator that always returns the size of the cartesian product of the given subproblems as the upper bound
-     */
-    struct M_EXPORT RangeCartesianProductEstimator : CardinalityEstimatorCRTP<RangeCartesianProductEstimator>
-    {
-        struct RangeCartesianProductDataModel : DataModel
-        {
-            std::size_t size;
-
-            RangeCartesianProductDataModel() = default;
-            RangeCartesianProductDataModel(std::size_t size) : size(size) {}
-
-            void assign_to(Subproblem) override { /* nothing to be done */ }
-            void set_cardinality(double cardinality) override
-            {
-                size = cardinality;
-            }
-        };
-        RangeCartesianProductEstimator() {}
-        RangeCartesianProductEstimator(ThreadSafePooledString) {}
-
-        /*==================================================================================================================
-         * Model calculation
-         *================================================================================================================*/
-
-        std::unique_ptr<DataModel> empty_model() const override;
-        std::unique_ptr<DataModel> estimate_scan(const QueryGraph &G, Subproblem P) const override;
-        std::unique_ptr<DataModel>
-        estimate_filter(const QueryGraph &G, const DataModel &data, const cnf::CNF &filter) const override;
-        std::unique_ptr<DataModel>
-        estimate_limit(const QueryGraph &G, const DataModel &data, std::size_t limit, std::size_t offset) const override;
-        std::unique_ptr<DataModel>
-        estimate_grouping(const QueryGraph &G, const DataModel &data, const std::vector<group_type> &groups) const override;
-        std::unique_ptr<DataModel>
-        estimate_join(const QueryGraph &G, const DataModel &left, const DataModel &right,
-                      const cnf::CNF &condition) const override;
-
-        template <typename PlanTable>
-        std::unique_ptr<DataModel>
-        operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph &G, Subproblem to_join,
-                   const cnf::CNF &condition) const;
-
-        /*==================================================================================================================
-         * Prediction via model use
-         *================================================================================================================*/
-
-        std::size_t predict_cardinality(const DataModel &data) const override;
-
-    private:
-        void print(std::ostream &out) const override;
-    };
 
     /**
      * InjectionCardinalityEstimator that estimates cardinalities based on a table that contains sizes for the given

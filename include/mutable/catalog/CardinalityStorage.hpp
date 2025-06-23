@@ -145,14 +145,14 @@ namespace m
         // Simplified representation of the plan structure
         std::unordered_map<Subproblem, Subproblem, SubproblemHash> join_structure; // maps subproblem -> left child
 
-        // Query identification
-        std::string query_id;
-
         // Add filter predicates
         std::vector<FilterPredicate> filter_predicates;
 
         // Map from subproblem to the filters that apply to it
         std::unordered_map<Subproblem, std::vector<size_t>, SubproblemHash> subproblem_filters; // Maps to indices in filter_predicates
+
+        // Map from subproblem to the tables it contains
+        std::unordered_map<Subproblem, std::vector<std::string>, SubproblemHash> subproblem_tables;
     };
 
     /**
@@ -679,13 +679,11 @@ namespace m
          * @brief Store a query plan for future matching
          *
          * @param plan_table The plan table containing the query plan
-         * @param query_id Optional query identifier (e.g., hash of SQL text)
          */
         template <typename PlanTable>
-        void store_query_plan(const PlanTable &plan_table, const std::string &query_id = "")
+        void store_query_plan(const PlanTable &plan_table)
         {
             StoredQueryPlan stored_plan;
-            stored_plan.query_id = query_id;
 
             // Extract the join structure from the plan table
             for (std::size_t i = 1; i < plan_table.size(); ++i)
@@ -717,6 +715,20 @@ namespace m
 
                                     // Map the subproblem to this filter predicate
                                     stored_plan.subproblem_filters[s].push_back(pred_idx);
+                                }
+                            }
+
+                            // Store table names for this subproblem
+                            if (cardinality_data->data)
+                            {
+                                stored_plan.subproblem_tables[s] = cardinality_data->data->table_names;
+
+                                if (debug_output_)
+                                {
+                                    std::cout << "  Stored tables for subproblem " << s << ": ";
+                                    for (const auto &table : cardinality_data->data->table_names)
+                                        std::cout << table << " ";
+                                    std::cout << std::endl;
                                 }
                             }
                         }

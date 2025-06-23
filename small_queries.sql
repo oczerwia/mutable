@@ -36,3 +36,11 @@ SELECT  table_2.id, table_2.col_2, table_1.id, table_1.col_1 FROM table_2, table
 SELECT table_1.id, table_1.col_1, table_3.id, table_3.col_3 FROM table_1, table_3 WHERE table_1.id = table_3.id;
 
 
+-- non-overlapping queries test
+SELECT table_1.id, table_1.col_1, table_2.id, table_2.col_2 FROM table_1, table_2 WHERE table_1.id = table_2.id;
+SELECT table_3.id, table_3.col_3, table_4.id, table_4.col_4 FROM table_3, table_4 WHERE table_3.id = table_4.id;
+
+-- Strict Filter comparison test
+SELECT table_1.id, table_1.col_1, table_2.id, table_2.col_2 FROM table_1, table_2 WHERE table_1.id = table_2.id WHERE table_1.col_1 < 500;
+SELECT table_1.id, table_1.col_1, table_2.id, table_2.col_2 FROM table_1, table_2 WHERE table_1.id = table_2.id;
+

@@ -8,4 +8,4 @@ FetchContent_Populate(
     SYSTEM
     EXCLUDE_FROM_ALL
 )
-include_directories(SYSTEM "${CMAKE_CURRENT_SOURCE_DIR}/third-party/json-${JSON_VERSION}/include")
+include_directories(SYSTEM "${CMAKE_CURRENT_SOURCE_DIR}/third-party/json/include")

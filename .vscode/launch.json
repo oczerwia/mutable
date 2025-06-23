@@ -1,0 +1,33 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "GOO",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug_shared/bin/shell",
+            "args": [
+                "--plan-enumerator",
+                "GOO",
+                "--backend",
+                "Interpreter"
+            ],
+            "cwd": "${workspaceFolder}",
+            "terminal": "integrated"
+        },
+        {
+            "name": "DPsizeOpt",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug_shared/bin/shell",
+            "args": [
+                "--plan-enumerator",
+                "DPsizeOpt",
+                "--backend",
+                "Interpreter"
+            ],
+            "cwd": "${workspaceFolder}",
+            "terminal": "integrated"
+        }
+    ]
+}

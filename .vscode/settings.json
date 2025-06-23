@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "*.tex": "plaintext",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "ios": "cpp"
     }
 }

@@ -2,6 +2,8 @@
 
 #include <mutable/IR/PlanTable.hpp>
 #include <mutable/IR/Operator.hpp>
+#include <mutable/IR/CNF.hpp> // Add this for CNF structure
+
 #include <unordered_map>
 #include <memory>
 #include <functional>
@@ -16,6 +18,28 @@
 
 namespace m
 {
+    // Simple filter predicate representation that doesn't rely on specific expression types
+    struct FilterPredicate
+    {
+        std::string table_name;
+        std::string column_name;
+        std::string op;    // "=", ">", "<", ">=", "<=", "<>", etc.
+        std::string value; // String representation of the value
+
+        // Equality comparison for exact matching
+        bool operator==(const FilterPredicate &other) const
+        {
+            return table_name == other.table_name &&
+                   column_name == other.column_name &&
+                   op == other.op &&
+                   value == other.value;
+        }
+
+        std::string to_string() const
+        {
+            return table_name + "." + column_name + " " + op + " " + value;
+        }
+    };
 
     /**
      * @brief Complete data structure containing all relevant cardinality information for easy extraction
@@ -42,6 +66,9 @@ namespace m
         // Performance metrics
         double selectivity = -1.0;   // Computed selectivity if available
         double error_percent = -1.0; // Estimation error percentage
+
+        // Add filter information
+        std::vector<FilterPredicate> filter_predicates;
 
         // Get the full bitmask as a string (e.g., "1101")
         std::string get_bitmask_string(size_t max_positions) const
@@ -76,6 +103,31 @@ namespace m
             }
             return false;
         }
+
+        // Helper to check if filter predicates match
+        bool filter_predicates_match(const std::vector<FilterPredicate> &other_filters) const
+        {
+            if (filter_predicates.size() != other_filters.size())
+                return false;
+
+            // Check each predicate (order independent)
+            for (const auto &pred : filter_predicates)
+            {
+                bool found = false;
+                for (const auto &other : other_filters)
+                {
+                    if (pred == other)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                    return false;
+            }
+
+            return true;
+        }
     };
 
     /**
@@ -95,6 +147,12 @@ namespace m
 
         // Query identification
         std::string query_id;
+
+        // Add filter predicates
+        std::vector<FilterPredicate> filter_predicates;
+
+        // Map from subproblem to the filters that apply to it
+        std::unordered_map<Subproblem, std::vector<size_t>, SubproblemHash> subproblem_filters; // Maps to indices in filter_predicates
     };
 
     /**
@@ -389,10 +447,104 @@ namespace m
                 }
             }
 
-            // For FilterOperator - just mark presence
-            if (dynamic_cast<const FilterOperator *>(&op))
+            // Enhanced FilterOperator handling with string-based parsing
+            if (auto filter_op = dynamic_cast<const FilterOperator *>(&op))
             {
                 data.has_filter = true;
+
+                // Get the filter CNF in string form
+                std::ostringstream ss;
+                ss << filter_op->filter();
+                std::string filter_str = ss.str();
+
+                if (debug_output_)
+                {
+                    std::cout << "  Extracting filter: " << filter_str << std::endl;
+                }
+
+                // First, split by AND if there are multiple clauses
+                std::vector<std::string> clauses;
+                size_t start = 0;
+                size_t pos;
+                while ((pos = filter_str.find(" AND ", start)) != std::string::npos)
+                {
+                    clauses.push_back(filter_str.substr(start, pos - start));
+                    start = pos + 5; // 5 is the length of " AND "
+                }
+                clauses.push_back(filter_str.substr(start)); // Add the last clause
+
+                // Process each clause
+                for (const auto &clause : clauses)
+                {
+                    // Extract filter components using common operators - order matters for proper parsing
+                    std::vector<std::string> operators = {">=", "<=", "<>", "!=", "=", ">", "<"};
+
+                    // Find which operator is in this clause
+                    size_t op_pos = std::string::npos;
+                    std::string found_op;
+                    for (const auto &op : operators)
+                    {
+                        size_t pos = clause.find(op);
+                        if (pos != std::string::npos)
+                        {
+                            op_pos = pos;
+                            found_op = op;
+                            break;
+                        }
+                    }
+
+                    if (op_pos != std::string::npos)
+                    {
+                        // Found an operator, extract left and right sides
+                        std::string left = clause.substr(0, op_pos);
+                        std::string right = clause.substr(op_pos + found_op.length());
+
+                        // Trim whitespace
+                        auto trim = [](std::string &s)
+                        {
+                            s.erase(0, s.find_first_not_of(" \t"));
+                            s.erase(s.find_last_not_of(" \t") + 1);
+                        };
+
+                        trim(left);
+                        trim(right);
+
+                        // Parse left side to extract table and column
+                        size_t dot_pos = left.find('.');
+                        if (dot_pos != std::string::npos)
+                        {
+                            std::string table = left.substr(0, dot_pos);
+                            std::string column = left.substr(dot_pos + 1);
+
+                            // Create filter predicate
+                            FilterPredicate pred;
+                            pred.table_name = table;
+                            pred.column_name = column;
+                            pred.op = found_op;
+                            pred.value = right;
+
+                            if (debug_output_)
+                            {
+                                std::cout << "    Extracted predicate: " << pred.to_string() << std::endl;
+                            }
+
+                            data.filter_predicates.push_back(pred);
+                        }
+                        else if (debug_output_)
+                        {
+                            std::cout << "    Could not parse predicate (no table.column format): " << clause << std::endl;
+                        }
+                    }
+                    else if (debug_output_)
+                    {
+                        std::cout << "    Could not find operator in: " << clause << std::endl;
+                    }
+                }
+
+                if (debug_output_)
+                {
+                    std::cout << "  Extracted " << data.filter_predicates.size() << " predicates from filter" << std::endl;
+                }
             }
 
             // For JoinOperator - mark presence and gather source tables
@@ -539,13 +691,35 @@ namespace m
             for (std::size_t i = 1; i < plan_table.size(); ++i)
             {
                 Subproblem s(i);
-                if (plan_table.has_plan(s) && s.size() > 1) // Only store joins
+                if (plan_table.has_plan(s))
                 {
                     const auto &entry = plan_table[s];
-                    if (entry.left && entry.right)
+
+                    // Store join structure
+                    if (s.size() > 1 && entry.left && entry.right)
                     {
-                        stored_plan.join_structure[s] = *entry.left;
-                        // We only need to store left child - right child is s - left
+                        stored_plan.join_structure[s] = entry.left;
+                    }
+
+                    // Extract and store filter predicates if present
+                    if (entry.data)
+                    {
+                        if (auto cardinality_data = dynamic_cast<PlanTableEntryCardinalityData *>(entry.data.get()))
+                        {
+                            if (cardinality_data->data && cardinality_data->data->has_filter)
+                            {
+                                // Add filter predicates
+                                for (const auto &filter_pred : cardinality_data->data->filter_predicates)
+                                {
+                                    // Store filter predicate
+                                    size_t pred_idx = stored_plan.filter_predicates.size();
+                                    stored_plan.filter_predicates.push_back(filter_pred);
+
+                                    // Map the subproblem to this filter predicate
+                                    stored_plan.subproblem_filters[s].push_back(pred_idx);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -555,7 +729,8 @@ namespace m
             if (debug_output_)
             {
                 std::cout << "Stored query plan #" << stored_query_plans_.size()
-                          << " with " << stored_plan.join_structure.size() << " joins" << std::endl;
+                          << " with " << stored_plan.join_structure.size() << " joins"
+                          << " and " << stored_plan.filter_predicates.size() << " filters" << std::endl;
             }
         }
 
@@ -563,64 +738,137 @@ namespace m
          * @brief Find stored query plans that match the given plan
          *
          * @param plan_table The plan table to match against stored plans
-         * @param exact_match If true, requires exact join structure match
+         * @param exact_match If true, requires exact join structure and filter match
          * @return std::vector<size_t> Indices of matching stored plans
          */
         template <typename PlanTable>
-        std::vector<size_t> find_matching_query_plans(const PlanTable &plan_table, bool exact_match = false) const
+        std::vector<size_t> find_matching_query_plans(const PlanTable &plan_table, bool exact_match = true) const
         {
             std::vector<size_t> matches;
 
-            // Extract the target plan's join structure
+            // Extract the target plan's join structure and filters
             std::unordered_map<Subproblem, Subproblem, SubproblemHash> target_structure;
+            std::vector<FilterPredicate> target_filters;
+            std::unordered_map<Subproblem, std::vector<size_t>, SubproblemHash> target_subproblem_filters;
+
+            // Extract join structure and filters from the plan table
             for (std::size_t i = 1; i < plan_table.size(); ++i)
             {
                 Subproblem s(i);
-                if (plan_table.has_plan(s) && s.size() > 1) // Only check joins
+                if (plan_table.has_plan(s))
                 {
                     const auto &entry = plan_table[s];
-                    if (entry.left && entry.right)
+
+                    // Extract join structure
+                    if (s.size() > 1 && entry.left && entry.right)
                     {
                         target_structure[s] = entry.left;
+                    }
+
+                    // Extract filter predicates
+                    if (entry.data)
+                    {
+                        if (auto cardinality_data = dynamic_cast<PlanTableEntryCardinalityData *>(entry.data.get()))
+                        {
+                            if (cardinality_data->data && cardinality_data->data->has_filter)
+                            {
+                                for (const auto &filter_pred : cardinality_data->data->filter_predicates)
+                                {
+                                    // Store the filter predicate
+                                    size_t pred_idx = target_filters.size();
+                                    target_filters.push_back(filter_pred);
+
+                                    // Map subproblem to filter
+                                    target_subproblem_filters[s].push_back(pred_idx);
+                                }
+                            }
+                        }
                     }
                 }
             }
 
             // Check each stored plan for a match
-            for (size_t i = 0; i < stored_query_plans_.size(); ++i)
+            for (size_t i = 0; i < stored_query_plans_.size(); i++)
             {
                 const auto &stored_plan = stored_query_plans_[i];
 
+                // First check: Join structure must match
+                if (stored_plan.join_structure != target_structure)
+                {
+                    continue; // Join structure doesn't match
+                }
+
+                // Second check: For exact matching, filter predicates must match
                 if (exact_match)
                 {
-                    // For exact match, structure must be identical
-                    if (stored_plan.join_structure == target_structure)
+                    // Check if filter counts match
+                    if (stored_plan.filter_predicates.size() != target_filters.size())
                     {
-                        matches.push_back(i);
+                        continue;
                     }
-                }
-                else
-                {
-                    // For partial match, check if all tables in target are in stored
-                    // and if the join ordering for those tables matches
-                    bool is_match = true;
 
-                    // Check if all subproblems in target exist in stored with same structure
-                    for (const auto &[subp, left] : target_structure)
+                    // Check if filters match exactly (regardless of order)
+                    bool filters_match = true;
+
+                    // Check if the same filters apply to the same subproblems
+                    for (const auto &[subp, target_indices] : target_subproblem_filters)
                     {
-                        auto it = stored_plan.join_structure.find(subp);
-                        if (it == stored_plan.join_structure.end() || it->second != left)
+                        auto it = stored_plan.subproblem_filters.find(subp);
+                        if (it == stored_plan.subproblem_filters.end() ||
+                            it->second.size() != target_indices.size())
                         {
-                            is_match = false;
+                            filters_match = false;
                             break;
                         }
+
+                        // Check each filter on this subproblem
+                        std::vector<FilterPredicate> target_subp_filters;
+                        for (size_t idx : target_indices)
+                        {
+                            target_subp_filters.push_back(target_filters[idx]);
+                        }
+
+                        std::vector<FilterPredicate> stored_subp_filters;
+                        for (size_t idx : it->second)
+                        {
+                            stored_subp_filters.push_back(stored_plan.filter_predicates[idx]);
+                        }
+
+                        // Compare the filter sets
+                        for (const auto &pred : target_subp_filters)
+                        {
+                            bool found = false;
+                            for (const auto &stored_pred : stored_subp_filters)
+                            {
+                                if (pred == stored_pred)
+                                {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (!found)
+                            {
+                                filters_match = false;
+                                break;
+                            }
+                        }
+
+                        if (!filters_match)
+                            break;
                     }
 
-                    if (is_match)
-                    {
-                        matches.push_back(i);
-                    }
+                    if (!filters_match)
+                        continue;
                 }
+
+                // If we get here, this plan is a match
+                matches.push_back(i);
+            }
+
+            if (debug_output_)
+            {
+                std::cout << "Found " << matches.size() << " matching query plans"
+                          << " (exact_match=" << (exact_match ? "true" : "false") << ")" << std::endl;
             }
 
             return matches;
@@ -628,9 +876,6 @@ namespace m
 
         /**
          * @brief Get a stored query plan by index
-         *
-         * @param index The index of the stored plan
-         * @return const StoredQueryPlan* Pointer to the plan, or nullptr if invalid index
          */
         const StoredQueryPlan *get_stored_query_plan(size_t index) const
         {
@@ -643,40 +888,67 @@ namespace m
 
         /**
          * @brief Get the number of stored query plans
-         *
-         * @return size_t Number of stored plans
          */
         size_t get_stored_query_plan_count() const
         {
             return stored_query_plans_.size();
         }
 
-        // Your lookup and query methods
+        /**
+         * @brief Look up join cardinality with filter matching
+         */
+        double lookup_join_cardinality(const Subproblem &left_sp,
+                                       const Subproblem &right_sp,
+                                       const std::vector<FilterPredicate> *filters,
+                                       bool &found) const
+        {
+            // Simple implementation - look up in our cache
+            const Subproblem joined = left_sp | right_sp;
+
+            // Try to find the cardinality for this exact join in our cache
+            auto it = subproblem_to_data_.find(joined);
+            if (it != subproblem_to_data_.end())
+            {
+                const auto &data = all_cardinality_data_[it->second];
+
+                // Check if we need to match filters
+                if (filters != nullptr)
+                {
+                    // We need to check if the filters match
+                    if (!data->filter_predicates_match(*filters))
+                    {
+                        found = false;
+                        return -1.0;
+                    }
+                }
+                else if (!data->filter_predicates.empty())
+                {
+                    // There are filters in the stored data but none provided for matching
+                    found = false;
+                    return -1.0;
+                }
+
+                if (data->true_cardinality >= 0)
+                {
+                    found = true;
+                    if (debug_output_)
+                    {
+                        std::cout << "Found stored cardinality for join: " << data->true_cardinality << std::endl;
+                    }
+                    return data->true_cardinality;
+                }
+            }
+
+            found = false;
+            return -1.0;
+        }
+
+        // Overload that accepts no filters for backward compatibility
         double lookup_join_cardinality(const Subproblem &left_sp,
                                        const Subproblem &right_sp,
                                        bool &found) const
-            {
-        // Simple implementation - look up in our cache
-        const Subproblem joined = left_sp | right_sp;
-
-        // Try to find the cardinality for this exact join in our cache
-        auto it = subproblem_to_data_.find(joined);
-        if (it != subproblem_to_data_.end())
         {
-            const auto &data = all_cardinality_data_[it->second];
-            if (data->true_cardinality >= 0)
-            {
-                found = true;
-                if (debug_output_)
-                {
-                    std::cout << "Found stored cardinality for join: " << data->true_cardinality << std::endl;
-                }
-                return data->true_cardinality;
-            }
-        }
-
-        found = false;
-        return -1.0;
+            return lookup_join_cardinality(left_sp, right_sp, nullptr, found);
         }
     };
 } // namespace m

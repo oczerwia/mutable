@@ -9,7 +9,7 @@ ExternalProject_Add(
     PREFIX third-party
     DOWNLOAD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third-party"
     GIT_REPOSITORY "https://github.com/AmokHuginnsson/replxx.git"
-    GIT_TAG 2b248467112cbbc16f63fde38230fd7c7ffc55f1
+    GIT_TAG 737c8e8147d44eae530e2b56592ad8788695ef12
     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third-party/replxx"
     PATCH_COMMAND sed -i.origin "s/^.*set_property.*DEBUG_POSTFIX.*//" "CMakeLists.txt"
     COMMAND sed -i.origin "s/^if *( *NOT BUILD_SHARED_LIBS AND MSVC *)/if ( NOT BUILD_SHARED_LIBS )/" "CMakeLists.txt"

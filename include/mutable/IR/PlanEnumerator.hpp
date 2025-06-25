@@ -108,7 +108,11 @@ namespace m
             void for_each_join(Callback &&callback, PlanTable &PT, const QueryGraph &G, const AdjacencyMatrix &M,
                                const CostFunction &, const CardinalityEstimator &CE, node *begin, node *end) const
             {
-                cnf::CNF condition; // TODO use join condition
+                cnf::CNF condition;
+
+                // TODO: Here we need to extract the 
+
+
                 while (begin + 1 != end)
                 {
                     using std::swap;
@@ -250,137 +254,6 @@ namespace m
             void operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const CostFunction &CF) const;
         };
 
-        /** Customizable greedy operator ordering. */
-        struct M_EXPORT CustomGOO : PlanEnumeratorCRTP<CustomGOO>
-        {
-            using base_type = PlanEnumeratorCRTP<CustomGOO>;
-            using base_type::operator();
-
-            struct node
-            {
-                Subproblem subproblem;
-                Subproblem neighbors;
-
-                node() = default;
-                node(Subproblem subproblem, Subproblem neighbors)
-                    : subproblem(subproblem), neighbors(neighbors)
-                {
-                }
-
-                /** Checks whether two nodes can be merged. */
-                bool can_merge_with(const node &other) const
-                {
-                    M_insist(bool(this->subproblem & other.neighbors) == bool(other.subproblem & this->neighbors));
-                    return bool(this->subproblem & other.neighbors);
-                }
-
-                /** Merge two nodes. */
-                node merge(const node &other) const
-                {
-                    M_insist(can_merge_with(other));
-                    const Subproblem S = this->subproblem | other.subproblem;
-                    return node(S, (this->neighbors | other.neighbors) - S);
-                }
-
-                /** Merges `this` and `other`. */
-                node operator+(const node &other) const { return merge(other); }
-                /** Merges `other` *into* `this` node. */
-                node &operator+=(const node &other)
-                {
-                    *this = *this + other;
-                    return *this;
-                }
-
-                /** Checks whether `this` node node can be merged with `other`. */
-                bool operator&(const node &other) const { return can_merge_with(other); }
-            };
-
-            /** Enumerate the sequence of joins that yield the smallest subproblem in each step. */
-            template <typename Callback, typename PlanTable>
-            void for_each_join(Callback &&callback, PlanTable &PT, const QueryGraph &G, const AdjacencyMatrix &M,
-                               const CostFunction &, const CardinalityEstimator &CE, node *begin, node *end) const
-            {
-                cnf::CNF condition; // TODO use join condition
-                while (begin + 1 != end)
-                {
-                    using std::swap;
-
-                    /*----- Find two most promising subproblems to join. -----*/
-                    node *left = nullptr, *right = nullptr;
-                    double least_cardinality = std::numeric_limits<double>::infinity();
-                    for (node *outer = begin; outer != end; ++outer)
-                    {
-                        for (node *inner = std::next(outer); inner != end; ++inner)
-                        {
-                            if (*outer & *inner)
-                            { // can be merged
-                                M_insist((outer->subproblem & inner->subproblem).empty());
-                                M_insist(M.is_connected(outer->subproblem, inner->subproblem));
-                                const Subproblem joined = outer->subproblem | inner->subproblem;
-
-                                // Search the CardinalityStorage for matching plans
-                                bool found = false;
-                                double stored_cardinality = -1.0;
-
-                                // Use Catalog to access CardinalityStorage
-                                stored_cardinality = CardinalityStorage::Get().lookup_join_cardinality(
-                                    outer->subproblem, inner->subproblem, found);
-
-                                // Create data model if needed - use existing code
-                                if (not PT[joined].model)
-                                    PT[joined].model = CE.estimate_join(G, *PT[outer->subproblem].model,
-                                                                        *PT[inner->subproblem].model, condition);
-
-                                // Use stored cardinality if found, otherwise use estimate
-                                double C_joined;
-                                if (found)
-                                {
-                                    C_joined = stored_cardinality;
-                                    if (CardinalityStorage::Get().debug_output())
-                                        std::cout << "Using stored true cardinality: " << C_joined << std::endl;
-
-                                    // Update the model's cardinality to match the stored true cardinality
-                                    PT[joined].model->set_cardinality(C_joined);
-                                }
-
-                                C_joined = CE.predict_cardinality(*PT[joined].model);
-                                if (C_joined < least_cardinality)
-                                {
-                                    least_cardinality = C_joined;
-                                    left = outer;
-                                    right = inner;
-                                }
-                            }
-                        }
-                    }
-
-                    /*----- Issue callback. -----*/
-                    M_insist((left->subproblem & right->subproblem).empty());
-                    M_insist(M.is_connected((left->subproblem & right->subproblem)));
-                    callback(left->subproblem, right->subproblem);
-
-                    /*----- Join the two most promising subproblems found. -----*/
-                    M_insist(left);
-                    M_insist(right);
-                    M_insist(left < right);
-                    *left += *right;      // merge `right` into `left`
-                    swap(*right, *--end); // erase old `right`
-                }
-            }
-
-            template <typename PlanTable>
-            void compute_plan(PlanTable &PT, const QueryGraph &G, const AdjacencyMatrix &M,
-                              const CostFunction &CF, const CardinalityEstimator &CE, node *begin, node *end) const
-            {
-                for_each_join([&](const Subproblem left, const Subproblem right)
-                              {
-            static cnf::CNF condition;
-            PT.update(G, CE, CF, left, right, condition); }, PT, G, M, CF, CE, begin, end);
-            }
-
-            template <typename PlanTable>
-            void operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const CostFunction &CF) const;
-        };
     }
 
 }

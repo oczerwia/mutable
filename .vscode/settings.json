@@ -78,6 +78,7 @@
         "algorithm": "cpp",
         "hash_map": "cpp",
         "span": "cpp",
-        "scoped_allocator": "cpp"
+        "scoped_allocator": "cpp",
+        "alignedvector3": "cpp"
     }
 }

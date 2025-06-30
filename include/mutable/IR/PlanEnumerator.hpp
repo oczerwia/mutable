@@ -117,6 +117,8 @@ namespace m
 
                 node *c_begin = begin;
 
+                CardinalityStorage::Get().update_current_table_names(G);
+
                 
                 CardinalityStorage::Get().quick_test_generator();
                 
@@ -141,7 +143,7 @@ namespace m
                                 // Search the CardinalityStorage for matching plans
                                 bool found = false;
                                 double stored_cardinality = -1.0;
-                                CardinalityStorage::Get().update_current_table_names(G);
+                                
                                 if (CardinalityStorage::Get().has_stored_cardinality(joined)){
                                     std::cout << "FOUND WITH NEW CARD METHOD" << std::endl;
                                     found = true;

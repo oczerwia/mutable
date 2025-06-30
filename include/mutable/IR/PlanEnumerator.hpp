@@ -118,11 +118,10 @@ namespace m
                 node *c_begin = begin;
 
                 CardinalityStorage::Get().update_current_table_names(G);
+                CardinalityStorage::Get().extract_all_filters_as_strings(G);
 
-                
                 CardinalityStorage::Get().quick_test_generator();
                 
-                //const std::set<std::string>& table_names = CardinalityStorage::Get().get_current_table_names();
 
                 while (begin + 1 != end)
                 {
@@ -149,10 +148,6 @@ namespace m
                                     found = true;
                                     stored_cardinality = CardinalityStorage::Get().get_cardinality();
                                 }
-
-                                // Use Catalog to access CardinalityStorage
-                                stored_cardinality = CardinalityStorage::Get().lookup_join_cardinality(
-                                    outer->subproblem, inner->subproblem, found);
 
                                 // Create data model if needed - use existing code
                                 if (not PT[joined].model)

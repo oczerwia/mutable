@@ -168,6 +168,7 @@ namespace m
         //CNF::filter;
 
         std::set<std::string> source_names_;
+        std::set<std::string> source_filters_;
         double cardinality_;
 
         // comparison data
@@ -219,6 +220,7 @@ namespace m
 
         // NEW TRY
         std::vector<std::string> current_table_names_;
+        std::set<std::string> current_filters_;
         // List to store reduced query graphs for cardinality lookup
         std::vector<ReducedQueryGraph> reduced_query_graphs_;
         // when we find a cardinality, we store it on this variable
@@ -247,9 +249,25 @@ namespace m
             test_query.source_names_.insert("table_1");
             test_query.source_names_.insert("table_2");
             test_query.source_names_.insert("table_3");
-            test_query.cardinality_ = 20.0;
+            test_query.cardinality_ = 10.0;
             
             reduced_query_graphs_.push_back(test_query);
+
+            ReducedQueryGraph test_query_2;
+            test_query_2.source_names_.insert("table_1");
+            test_query_2.source_names_.insert("table_2");
+            test_query_2.cardinality_ = 20.0;
+            
+            reduced_query_graphs_.push_back(test_query_2);
+
+            // Add a third test query with same tables as test_query_2 but with a filter
+            ReducedQueryGraph test_query_3;
+            test_query_3.source_names_.insert("table_1");
+            test_query_3.source_names_.insert("table_2");
+            test_query_3.source_filters_.insert("(table_1.col_1 < 400)");
+            test_query_3.cardinality_ = 15.0;
+    
+            reduced_query_graphs_.push_back(test_query_3);
             
             if (debug_output_) {
                 std::cout << "Generated test query with tables: ";
@@ -318,8 +336,10 @@ namespace m
             }
             for (const auto& stored_query : reduced_query_graphs_) {
                 if (stored_query.source_names_ == table_names) {
-                    cardinality_ = stored_query.get_cardinality();
-                    return true;
+                    if (stored_query.source_filters_ == current_filters_) {
+                        cardinality_ = stored_query.get_cardinality();
+                        return true;
+                    }
                 }
             }
             return false;
@@ -327,6 +347,21 @@ namespace m
         
         double get_cardinality() const {
             return this->cardinality_;
+        }
+
+
+        void extract_all_filters_as_strings(const QueryGraph& G) {
+            std::set<std::string> filter_strings;
+            const auto& sources = G.sources();
+            for (const auto& source_ptr : sources) {
+                const DataSource& ds = *source_ptr;
+                if (!ds.filter().empty()) {
+                    // Convert to string and normalize (sort clauses/predicates)
+                    std::string filter_str = to_string(ds.filter());
+                    filter_strings.insert(filter_str);
+                }
+            }
+            current_filters_ = filter_strings;
         }
 
         /**

@@ -2,7 +2,8 @@
 
 #include <mutable/IR/PlanTable.hpp>
 #include <mutable/IR/Operator.hpp>
-#include <mutable/IR/CNF.hpp> // Add this for CNF structure
+#include <mutable/IR/CNF.hpp> 
+#include <mutable/util/ADT.hpp>
 
 #include <unordered_map>
 #include <memory>
@@ -15,6 +16,7 @@
 #include <vector>
 #include <map>
 #include <algorithm>
+#include <set>
 
 namespace m
 {
@@ -155,6 +157,41 @@ namespace m
         std::unordered_map<Subproblem, std::vector<std::string>, SubproblemHash> subproblem_tables;
     };
 
+    class ReducedQueryGraph
+
+    // add a function with which you can compare the reducedquerygraph with a set of table names or build the reduced query graph from the query graph in the beginning
+    // then iterate over the list of sets and return the cardinality if it is there.
+    {
+    public:
+        // needed data
+
+        //CNF::filter;
+
+        std::set<std::string> source_names_;
+        double cardinality_;
+
+        // comparison data
+        // sources already defined above
+        
+        // filter
+        // joins
+        // group_by
+        // aggregate
+
+        bool operator==(const ReducedQueryGraph& other) const{
+            if (this->source_names_ == other.source_names_) return true;
+            return false;
+        }
+
+        bool operator!=(const ReducedQueryGraph& other) const{
+            if (this->source_names_ == other.source_names_) return false;
+            return true;
+        }
+        double get_cardinality() const {
+            return this->cardinality_;
+        }
+    };
+
     /**
      * @brief Singleton class that stores cardinality information from query execution
      */
@@ -179,6 +216,16 @@ namespace m
         // Private constructor for singleton pattern
         CardinalityStorage() = default;
 
+
+        // NEW TRY
+        std::vector<std::string> current_table_names_;
+        // List to store reduced query graphs for cardinality lookup
+        std::vector<ReducedQueryGraph> reduced_query_graphs_;
+        // when we find a cardinality, we store it on this variable
+        double cardinality_; 
+
+
+
     public:
         // Delete copy/move constructors and assignment operators
         CardinalityStorage(const CardinalityStorage &) = delete;
@@ -193,6 +240,93 @@ namespace m
         {
             static CardinalityStorage instance;
             return instance;
+        }
+
+        void quick_test_generator(){
+            ReducedQueryGraph test_query;
+            test_query.source_names_.insert("table_1");
+            test_query.source_names_.insert("table_2");
+            test_query.source_names_.insert("table_3");
+            test_query.cardinality_ = 20.0;
+            
+            reduced_query_graphs_.push_back(test_query);
+            
+            if (debug_output_) {
+                std::cout << "Generated test query with tables: ";
+                for (const auto& table : test_query.source_names_) {
+                    std::cout << table << " ";
+                }
+                std::cout << "and cardinality: " << test_query.cardinality_ << std::endl;
+            }
+        }
+
+        /**
+         * @brief Get the current table names
+         * 
+         * @return const std::set<std::string>& Reference to current table names
+         */
+        const std::vector<std::string>& get_current_table_names() const
+        {
+            return current_table_names_;
+        }
+
+            /**
+         * @brief Update the current table names set by traversing the plan table
+         * 
+         * @param plan_table The plan table to extract table names from
+         */
+        void update_current_table_names(const QueryGraph& query_graph)
+        {
+            std::vector<std::string> table_names;
+            
+            // Traverse all data sources in the query graph
+            const auto& sources = query_graph.sources();
+            for (const auto& source_ptr : sources)
+            {
+            const DataSource& ds = *source_ptr;
+            auto name_opt = ds.name();
+            if (name_opt.has_value())
+            {
+                table_names.push_back(*name_opt);
+            }
+            }
+            
+            // Update the current table names vector
+            current_table_names_ = table_names;
+            
+            if (debug_output_)
+            {
+            std::cout << "Updated current table names from QueryGraph: ";
+            for (const auto& name : current_table_names_)
+            {
+                std::cout << name << " ";
+            }
+            std::cout << std::endl;
+            }
+        }
+
+
+        bool has_stored_cardinality(SmallBitset involved_tables) {
+            // 1. Iterate over the Bitset 
+            // 2. get the involved tables from previously determined set of involved tables
+            // 3. iterate over the vector of all previously stored queries and search for equal 
+            //      sets of tables
+
+            std::set<std::string> table_names;
+            for (auto pos : involved_tables) {
+                table_names.insert(current_table_names_[pos]);
+            }
+            for (const auto& stored_query : reduced_query_graphs_) {
+                if (stored_query.source_names_ == table_names) {
+                    cardinality_ = stored_query.get_cardinality();
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        double get_cardinality() const {
+            return this->cardinality_;
         }
 
         /**

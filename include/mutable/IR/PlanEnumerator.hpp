@@ -110,8 +110,17 @@ namespace m
             {
                 cnf::CNF condition;
 
-                // TODO: Here we need to extract the 
+                // Lets inspect everything that we get during our joins
 
+                const PlanTable& c_pt = PT;
+                const QueryGraph& c_g = G;
+
+                node *c_begin = begin;
+
+                
+                CardinalityStorage::Get().quick_test_generator();
+                
+                //const std::set<std::string>& table_names = CardinalityStorage::Get().get_current_table_names();
 
                 while (begin + 1 != end)
                 {
@@ -129,10 +138,15 @@ namespace m
                                 M_insist((outer->subproblem & inner->subproblem).empty());
                                 M_insist(M.is_connected(outer->subproblem, inner->subproblem));
                                 const Subproblem joined = outer->subproblem | inner->subproblem;
-
                                 // Search the CardinalityStorage for matching plans
                                 bool found = false;
                                 double stored_cardinality = -1.0;
+                                CardinalityStorage::Get().update_current_table_names(G);
+                                if (CardinalityStorage::Get().has_stored_cardinality(joined)){
+                                    std::cout << "FOUND WITH NEW CARD METHOD" << std::endl;
+                                    found = true;
+                                    stored_cardinality = CardinalityStorage::Get().get_cardinality();
+                                }
 
                                 // Use Catalog to access CardinalityStorage
                                 stored_cardinality = CardinalityStorage::Get().lookup_join_cardinality(

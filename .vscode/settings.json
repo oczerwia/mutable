@@ -75,6 +75,9 @@
         "valarray": "cpp",
         "variant": "cpp",
         "vector": "cpp",
-        "algorithm": "cpp"
+        "algorithm": "cpp",
+        "hash_map": "cpp",
+        "span": "cpp",
+        "scoped_allocator": "cpp"
     }
 }

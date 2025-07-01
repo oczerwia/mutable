@@ -357,7 +357,8 @@ namespace m
 
             // Store cardinality information
             CardinalityStorage::Get().map_true_cardinalities_to_logical_plan(plan.get_matched_root());
-        }
+            CardinalityStorage::Get().extract_reduced_query_graphs_from_execution(plan.get_matched_root());
+        }   
 
         using ConstOperatorVisitor::operator();
 #define DECLARE(CLASS) void operator()(Const<CLASS> &op) override;

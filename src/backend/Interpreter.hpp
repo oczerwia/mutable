@@ -356,7 +356,6 @@ namespace m
             collect_and_analyze_cardinality_stats(plan.get_matched_root());
 
             // Store cardinality information
-            CardinalityStorage::Get().map_true_cardinalities_to_logical_plan(plan.get_matched_root());
             CardinalityStorage::Get().extract_reduced_query_graphs_from_execution(plan.get_matched_root());
         }   
 

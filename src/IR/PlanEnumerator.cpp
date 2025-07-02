@@ -159,9 +159,6 @@ struct DPsizeOpt final : PlanEnumeratorCRTP<DPsizeOpt>
                             bool found = false;
                             double stored_cardinality = -1.0;
 
-                            // Look up stored cardinality
-                            stored_cardinality = CardinalityStorage::Get().lookup_join_cardinality(*S1, *S2, found);
-
                             cnf::CNF condition; // TODO use join condition
 
                             // Create the model if needed
@@ -201,9 +198,6 @@ struct DPsizeOpt final : PlanEnumeratorCRTP<DPsizeOpt>
                             const Subproblem joined = *S1 | *S2;
                             bool found = false;
                             double stored_cardinality = -1.0;
-
-                            // Look up stored cardinality
-                            stored_cardinality = CardinalityStorage::Get().lookup_join_cardinality(*S1, *S2, found);
 
                             cnf::CNF condition; // TODO use join condition
 

@@ -235,33 +235,6 @@ std::pair<std::unique_ptr<Producer>, PlanTable> Optimizer::optimize_with_plantab
     // Add after logical plan construction but before join enumeration
     // This is typically near the beginning of the optimize() method
 
-    // Check if we've executed similar queries before
-    if (CardinalityStorage::Get().get_stored_query_plan_count() > 0)
-    {
-        std::cout << "Checking for matching query plans in storage..." << std::endl;
-
-        auto matching_plans = CardinalityStorage::Get().find_matching_query_plans(PT);
-
-        if (!matching_plans.empty())
-        {
-            std::cout << "Found " << matching_plans.size() << " matching plan(s) from previous executions" << std::endl;
-
-            // For debugging, output the first match
-            const auto *stored_plan = CardinalityStorage::Get().get_stored_query_plan(matching_plans[0]);
-            if (stored_plan)
-            {
-                std::cout << "Using matching plan #" << matching_plans[0]
-                          << " with " << stored_plan->join_structure.size() << " joins" << std::endl;
-
-                // Here you would use the stored cardinalities to improve optimization
-                // This might involve modifying your CardinalityEstimator to check for stored values
-            }
-        }
-        else
-        {
-            std::cout << "No matching query plans found" << std::endl;
-        }
-    }
 
     return {std::move(plan), std::move(PT)};
 }

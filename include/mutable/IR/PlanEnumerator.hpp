@@ -112,8 +112,8 @@ namespace m
 
                 // Lets inspect everything that we get during our joins
 
-                const PlanTable& c_pt = PT;
-                const QueryGraph& c_g = G;
+                const PlanTable &c_pt = PT;
+                const QueryGraph &c_g = G;
 
                 node *c_begin = begin;
 
@@ -121,7 +121,6 @@ namespace m
                 CardinalityStorage::Get().extract_all_filters_as_strings(G);
 
                 CardinalityStorage::Get().quick_test_generator();
-                
 
                 while (begin + 1 != end)
                 {
@@ -142,8 +141,9 @@ namespace m
                                 // Search the CardinalityStorage for matching plans
                                 bool found = false;
                                 double stored_cardinality = -1.0;
-                                
-                                if (CardinalityStorage::Get().has_stored_cardinality(joined)){
+
+                                if (CardinalityStorage::Get().has_stored_cardinality(joined))
+                                {
                                     std::cout << "FOUND WITH NEW CARD METHOD" << std::endl;
                                     found = true;
                                     stored_cardinality = CardinalityStorage::Get().get_cardinality();

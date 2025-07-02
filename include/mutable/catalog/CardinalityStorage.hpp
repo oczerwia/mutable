@@ -48,9 +48,6 @@ namespace m
     };
 
     class ReducedQueryGraph
-
-    // add a function with which you can compare the reducedquerygraph with a set of table names or build the reduced query graph from the query graph in the beginning
-    // then iterate over the list of sets and return the cardinality if it is there.
     {
     public:
         // needed data
@@ -60,6 +57,9 @@ namespace m
         std::set<std::string> source_names_;
         std::set<std::string> source_filters_;
         double cardinality_;
+
+        // NEW: Add estimated cardinality range as tuple
+        std::tuple<double, double> estimated_cardinality_range_;
 
         // comparison data
         // sources already defined above
@@ -79,9 +79,17 @@ namespace m
         {
             return !(*this == other);
         }
+
+        // NEW: Get the range instead of single cardinality
+        std::tuple<double, double> get_cardinality_range() const
+        {
+            return estimated_cardinality_range_;
+        }
+
+        // Keep existing method for backward compatibility
         double get_cardinality() const
         {
-            return this->cardinality_;
+            return cardinality_;
         }
     };
 
@@ -130,6 +138,8 @@ namespace m
             test_query.source_names_.insert("table_2");
             test_query.source_names_.insert("table_3");
             test_query.cardinality_ = 10.0;
+            // NEW: Initialize range
+            test_query.estimated_cardinality_range_ = initialize_cardinality_range(10.0);
 
             reduced_query_graphs_.push_back(test_query);
 
@@ -137,15 +147,18 @@ namespace m
             test_query_2.source_names_.insert("table_1");
             test_query_2.source_names_.insert("table_2");
             test_query_2.cardinality_ = 20.0;
+            // NEW: Initialize range
+            test_query_2.estimated_cardinality_range_ = initialize_cardinality_range(20.0);
 
             reduced_query_graphs_.push_back(test_query_2);
 
-            // Add a third test query with same tables as test_query_2 but with a filter
             ReducedQueryGraph test_query_3;
             test_query_3.source_names_.insert("table_1");
             test_query_3.source_names_.insert("table_2");
             test_query_3.source_filters_.insert("(table_1.col_1 < 400)");
             test_query_3.cardinality_ = 15.0;
+            // NEW: Initialize range
+            test_query_3.estimated_cardinality_range_ = initialize_cardinality_range(15.0);
 
             reduced_query_graphs_.push_back(test_query_3);
 
@@ -466,6 +479,8 @@ namespace m
                     }
 
                     new_graph.cardinality_ = cardinality_data->true_cardinality;
+                    new_graph.estimated_cardinality_range_ = initialize_cardinality_range(cardinality_data->true_cardinality);
+
                     temp_graphs.push_back(new_graph);
                 }
             }
@@ -514,6 +529,8 @@ namespace m
                     {
                         // Update existing entry
                         existing_graph.cardinality_ = new_graph.cardinality_;
+                        // NEW: Update range as well
+                        existing_graph.estimated_cardinality_range_ = new_graph.estimated_cardinality_range_;
                         found_existing = true;
 
                         if (debug_output_)
@@ -565,5 +582,74 @@ namespace m
     private:
         // Add default constructor
         CardinalityStorage() = default;
+
+        /**
+         * @brief Initialize cardinality range with true cardinality on both bounds
+         *
+         * @param true_cardinality The actual cardinality from execution
+         * @return std::tuple<double, double> Range with same value for min and max
+         */
+        std::tuple<double, double> initialize_cardinality_range(double true_cardinality)
+        {
+            return std::make_tuple(true_cardinality, true_cardinality);
+        }
+
+    public:
+        /**
+         * @brief Get the cardinality range for a specific set of tables and filters
+         *
+         * @param involved_tables The tables involved in the query
+         * @return std::tuple<double, double> The cardinality range (min, max)
+         */
+        std::tuple<double, double> get_stored_cardinality_range(SmallBitset involved_tables)
+        {
+            std::set<std::string> table_names;
+            for (auto pos : involved_tables)
+            {
+                if (pos < current_table_names_.size())
+                {
+                    table_names.insert(current_table_names_[pos]);
+                }
+            }
+            for (const auto &stored_query : reduced_query_graphs_)
+            {
+                if (stored_query.source_names_ == table_names)
+                {
+                    if (stored_query.source_filters_ == current_filters_)
+                    {
+                        return stored_query.get_cardinality_range();
+                    }
+                }
+            }
+            // Return empty range if not found (should not happen if has_stored_cardinality was true)
+            return std::make_tuple(0.0, 0.0);
+        }
+    };
+
+    class CardinalityRangeComparator
+    {
+    public:
+        /**
+         * @brief Compare two cardinality ranges to determine which is "smaller"
+         *
+         * @param range1 First cardinality range (min, max)
+         * @param range2 Second cardinality range (min, max)
+         * @return true if range1 is considered smaller than range2
+         */
+        static bool is_smaller(const std::tuple<double, double> &range1,
+                               const std::tuple<double, double> &range2)
+        {
+            // Strategy 1: Compare upper bounds (conservative approach)
+            return std::get<1>(range1) < std::get<1>(range2);
+
+            // Alternative strategies you can switch to later:
+            // Strategy 2: Compare lower bounds (optimistic approach)
+            // return std::get<0>(range1) < std::get<0>(range2);
+
+            // Strategy 3: Compare midpoints
+            // double mid1 = (std::get<0>(range1) + std::get<1>(range1)) / 2.0;
+            // double mid2 = (std::get<0>(range2) + std::get<1>(range2)) / 2.0;
+            // return mid1 < mid2;
+        }
     };
 } // namespace m

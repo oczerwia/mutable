@@ -851,7 +851,8 @@ void TDGOO::operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const 
     X(DPsizeSub, "DPsize with enumeration of subset complement pairs")                                                \
     X(DPsub, "subset-based subproblem enumeration")                                                                   \
     X(DPsubOpt, "optimized DPsub: does not enumerate symmetric subproblems")                                          \
-    X(GOO, "Greedy Operator Ordering")                                                                                \
+    X(GOO, "Greedy Operator Ordering")     
+    X(RangeGOO, "Range-Based Greedy Operator Ordering")                                                                           \
     X(TDGOO, "Top-down variant of Greedy Operator Ordering")                                                          \
     X(IKKBZ, "greedy algorithm by IK/KBZ, ordering joins by rank")                                                    \
     X(LinearizedDP, "DP with search space linearization based on IK/KBZ")                                             \

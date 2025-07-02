@@ -110,16 +110,8 @@ namespace m
             {
                 cnf::CNF condition;
 
-                // Lets inspect everything that we get during our joins
-
-                const PlanTable &c_pt = PT;
-                const QueryGraph &c_g = G;
-
-                node *c_begin = begin;
-
                 CardinalityStorage::Get().update_current_table_names(G);
                 CardinalityStorage::Get().extract_all_filters_as_strings(G);
-
                 CardinalityStorage::Get().quick_test_generator();
 
                 while (begin + 1 != end)
@@ -129,6 +121,7 @@ namespace m
                     /*----- Find two most promising subproblems to join. -----*/
                     node *left = nullptr, *right = nullptr;
                     double least_cardinality = std::numeric_limits<double>::infinity();
+
                     for (node *outer = begin; outer != end; ++outer)
                     {
                         for (node *inner = std::next(outer); inner != end; ++inner)
@@ -138,18 +131,19 @@ namespace m
                                 M_insist((outer->subproblem & inner->subproblem).empty());
                                 M_insist(M.is_connected(outer->subproblem, inner->subproblem));
                                 const Subproblem joined = outer->subproblem | inner->subproblem;
+
                                 // Search the CardinalityStorage for matching plans
                                 bool found = false;
                                 double stored_cardinality = -1.0;
 
                                 if (CardinalityStorage::Get().has_stored_cardinality(joined))
                                 {
-                                    std::cout << "FOUND WITH NEW CARD METHOD" << std::endl;
+                                    std::cout << "FOUND WITH POINT METHOD" << std::endl;
                                     found = true;
                                     stored_cardinality = CardinalityStorage::Get().get_cardinality();
                                 }
 
-                                // Create data model if needed - use existing code
+                                // Create data model if needed
                                 if (not PT[joined].model)
                                     PT[joined].model = CE.estimate_join(G, *PT[outer->subproblem].model,
                                                                         *PT[inner->subproblem].model, condition);
@@ -165,8 +159,12 @@ namespace m
                                     // Update the model's cardinality to match the stored true cardinality
                                     PT[joined].model->set_cardinality(C_joined);
                                 }
+                                else
+                                {
+                                    C_joined = CE.predict_cardinality(*PT[joined].model);
+                                }
 
-                                C_joined = CE.predict_cardinality(*PT[joined].model);
+                                // Point comparison
                                 if (C_joined < least_cardinality)
                                 {
                                     least_cardinality = C_joined;
@@ -259,6 +257,113 @@ namespace m
                 /*----- Issue callback for joins in bottom-up fashion. -----*/
                 for (auto it = joins.crbegin(); it != joins.crend(); ++it)
                     callback(it->first, it->second);
+            }
+
+            template <typename PlanTable>
+            void operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const CostFunction &CF) const;
+        };
+
+        /** Range-based Greedy operator ordering. */
+        struct M_EXPORT RangeGOO : PlanEnumeratorCRTP<RangeGOO>
+        {
+            using base_type = PlanEnumeratorCRTP<RangeGOO>;
+            using base_type::operator();
+
+            // Reuse the same node struct from GOO
+            using node = GOO::node;
+
+            /** Enumerate the sequence of joins that yield the smallest cardinality range in each step. */
+            template <typename Callback, typename PlanTable>
+            void for_each_join(Callback &&callback, PlanTable &PT, const QueryGraph &G, const AdjacencyMatrix &M,
+                               const CostFunction &, const CardinalityEstimator &CE, node *begin, node *end) const
+            {
+                cnf::CNF condition;
+
+                CardinalityStorage::Get().update_current_table_names(G);
+                CardinalityStorage::Get().extract_all_filters_as_strings(G);
+                CardinalityStorage::Get().quick_test_generator();
+
+                while (begin + 1 != end)
+                {
+                    using std::swap;
+
+                    /*----- Find two most promising subproblems to join using ranges. -----*/
+                    node *left = nullptr, *right = nullptr;
+                    std::tuple<double, double> least_cardinality_range =
+                        std::make_tuple(std::numeric_limits<double>::infinity(),
+                                        std::numeric_limits<double>::infinity());
+
+                    for (node *outer = begin; outer != end; ++outer)
+                    {
+                        for (node *inner = std::next(outer); inner != end; ++inner)
+                        {
+                            if (*outer & *inner)
+                            { // can be merged
+                                M_insist((outer->subproblem & inner->subproblem).empty());
+                                M_insist(M.is_connected(outer->subproblem, inner->subproblem));
+                                const Subproblem joined = outer->subproblem | inner->subproblem;
+
+                                // Create data model if needed
+                                if (not PT[joined].model)
+                                    PT[joined].model = CE.estimate_join(G, *PT[outer->subproblem].model,
+                                                                        *PT[inner->subproblem].model, condition);
+
+                                // Get cardinality range
+                                std::tuple<double, double> C_joined_range;
+                                bool found = CardinalityStorage::Get().has_stored_cardinality(joined);
+
+                                if (found)
+                                {
+                                    std::cout << "FOUND WITH RANGE METHOD" << std::endl;
+                                    C_joined_range = CardinalityStorage::Get().get_stored_cardinality_range(joined);
+                                    if (CardinalityStorage::Get().debug_output())
+                                        std::cout << "Using stored cardinality range: ["
+                                                  << std::get<0>(C_joined_range) << ", "
+                                                  << std::get<1>(C_joined_range) << "]" << std::endl;
+                                }
+                                else
+                                {
+                                    // Create range from estimated cardinality
+                                    double estimated_card = CE.predict_cardinality(*PT[joined].model);
+                                    C_joined_range = std::make_tuple(estimated_card, estimated_card);
+                                    if (CardinalityStorage::Get().debug_output())
+                                        std::cout << "Using estimated cardinality as range: ["
+                                                  << estimated_card << ", " << estimated_card << "]" << std::endl;
+                                }
+
+                                // Range comparison
+                                if (CardinalityStorage::Get().is_range_smaller(C_joined_range, least_cardinality_range))
+                                {
+                                    least_cardinality_range = C_joined_range;
+                                    left = outer;
+                                    right = inner;
+                                }
+                            }
+                        }
+                    }
+
+                    /*----- Issue callback. -----*/
+                    M_insist((left->subproblem & right->subproblem).empty());
+                    M_insist(M.is_connected((left->subproblem & right->subproblem)));
+                    callback(left->subproblem, right->subproblem);
+
+                    /*----- Join the two most promising subproblems found. -----*/
+                    M_insist(left);
+                    M_insist(right);
+                    M_insist(left < right);
+                    *left += *right;      // merge `right` into `left`
+                    swap(*right, *--end); // erase old `right`
+                }
+            }
+
+            template <typename PlanTable>
+            void compute_plan(PlanTable &PT, const QueryGraph &G, const AdjacencyMatrix &M,
+                              const CostFunction &CF, const CardinalityEstimator &CE, node *begin, node *end) const
+            {
+                for_each_join([&](const Subproblem left, const Subproblem right)
+                              {
+            static cnf::CNF condition;
+            PT.update(G, CE, CF, left, right, condition); }, PT, G, M, CF, CE, begin, end);
             }
 
             template <typename PlanTable>

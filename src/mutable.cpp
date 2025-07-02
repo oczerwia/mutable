@@ -188,7 +188,6 @@ void m::execute_statement(Diagnostic &diag, const ast::Stmt &stmt, const bool is
         if (not Options::Get().dryrun)
             M_TIME_EXPR(backend->execute(*physical_plan), "Execute query", timer);
             // STORE CARDINALITIES
-            CardinalityStorage::Get().map_true_cardinalities_to_logical_plan_(physical_plan->get_matched_root());
             CardinalityStorage::Get().extract_reduced_query_graphs_from_execution(physical_plan->get_matched_root());
 
     } else if (auto I = cast<const ast::InsertStmt>(&stmt)) {

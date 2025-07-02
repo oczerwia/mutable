@@ -50,24 +50,12 @@ namespace m
     class ReducedQueryGraph
     {
     public:
-        // needed data
-
-        // CNF::filter;
-
         std::set<std::string> source_names_;
         std::set<std::string> source_filters_;
-        double cardinality_;
+        double cardinality_; // Always present
 
-        // NEW: Add estimated cardinality range as tuple
-        std::tuple<double, double> estimated_cardinality_range_;
-
-        // comparison data
-        // sources already defined above
-
-        // filter
-        // joins
-        // group_by
-        // aggregate
+        // NEW: Make range optional
+        std::optional<std::tuple<double, double>> estimated_cardinality_range_;
 
         bool operator==(const ReducedQueryGraph &other) const
         {
@@ -80,13 +68,24 @@ namespace m
             return !(*this == other);
         }
 
-        // NEW: Get the range instead of single cardinality
-        std::tuple<double, double> get_cardinality_range() const
+        // NEW: Check if range is available
+        bool has_cardinality_range() const
         {
-            return estimated_cardinality_range_;
+            return estimated_cardinality_range_.has_value();
         }
 
-        // Keep existing method for backward compatibility
+        // NEW: Get the range (only if available)
+        std::tuple<double, double> get_cardinality_range() const
+        {
+            if (estimated_cardinality_range_.has_value())
+            {
+                return estimated_cardinality_range_.value();
+            }
+            // Fallback: create range from point estimate
+            return std::make_tuple(cardinality_, cardinality_);
+        }
+
+        // Keep existing method - always available
         double get_cardinality() const
         {
             return cardinality_;
@@ -99,12 +98,6 @@ namespace m
     class CardinalityStorage
     {
     private:
-        // Efficiently store data with shared_ptr to avoid duplication
-        std::vector<std::shared_ptr<CardinalityData>> all_cardinality_data_;
-
-        // Map from subproblem to data index for fast lookup
-        std::unordered_map<Subproblem, std::size_t, SubproblemHash> subproblem_to_data_;
-
         bool debug_output_ = true;
 
         // NEW TRY
@@ -479,7 +472,8 @@ namespace m
                     }
 
                     new_graph.cardinality_ = cardinality_data->true_cardinality;
-                    new_graph.estimated_cardinality_range_ = initialize_cardinality_range(cardinality_data->true_cardinality);
+                    // Only create range if specifically requested
+                    new_graph.estimated_cardinality_range_ = initialize_cardinality_range(cardinality_data->true_cardinality, false); // Don't create range by default
 
                     temp_graphs.push_back(new_graph);
                 }
@@ -584,14 +578,19 @@ namespace m
         CardinalityStorage() = default;
 
         /**
-         * @brief Initialize cardinality range with true cardinality on both bounds
+         * @brief Initialize cardinality range with true cardinality on both bounds (optional)
          *
          * @param true_cardinality The actual cardinality from execution
-         * @return std::tuple<double, double> Range with same value for min and max
+         * @param create_range Whether to create a range estimate (default: false)
+         * @return std::optional<std::tuple<double, double>> Range if requested
          */
-        std::tuple<double, double> initialize_cardinality_range(double true_cardinality)
+        std::optional<std::tuple<double, double>> initialize_cardinality_range(double true_cardinality, bool create_range = false)
         {
-            return std::make_tuple(true_cardinality, true_cardinality);
+            if (create_range)
+            {
+                return std::make_tuple(true_cardinality, true_cardinality);
+            }
+            return std::nullopt; // No range
         }
 
     public:
@@ -617,12 +616,10 @@ namespace m
                 {
                     if (stored_query.source_filters_ == current_filters_)
                     {
-                        return stored_query.get_cardinality_range();
+                        return stored_query.get_cardinality_range(); // This handles the optional logic
                     }
                 }
             }
-            // Return empty range if not found (should not happen if has_stored_cardinality was true)
-            return std::make_tuple(0.0, 0.0);
         }
     };
 

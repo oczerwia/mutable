@@ -44,13 +44,26 @@ namespace m
      */
     struct M_EXPORT DataModel
     {
-        virtual ~DataModel() = 0;
+    virtual ~DataModel() = 0;
+    virtual void assign_to(Subproblem s) = 0;
+    virtual void set_cardinality(double cardinality) = 0;
 
-        /** Assigns `this` to the `Subproblem` `s`, i.e. this model now describes the result of evaluating `s`. */
-        virtual void assign_to(Subproblem s) = 0;
-
-        virtual void set_cardinality(double cardinality) = 0; // Use to update cardinality if a reference was found
-    };
+    // NEW: Simple range storage - just these three functions
+    std::pair<double, double> range = {-1.0, -1.0}; // -1 indicates unset
+    
+    bool has_range() const { 
+        return range.first >= 0.0; // Range exists if set to valid values
+    }
+    
+    std::pair<double, double> get_range() const { 
+        return range;
+    }
+    
+    void set_range(std::pair<double, double> new_range) { 
+        range = new_range;
+        set_cardinality(new_range.second); // Update cardinality with upper bound
+    }
+};
 
     struct M_EXPORT estimate_join_all_tag : const_virtual_crtp_helper<estimate_join_all_tag>::
                                                 returns<std::unique_ptr<DataModel>>::

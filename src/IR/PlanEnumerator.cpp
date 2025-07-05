@@ -820,6 +820,30 @@ void GOO::operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const Co
     compute_plan(PT, G, M, CF, CE, nodes, nodes + G.num_sources());
 }
 
+/*======================================================================================================================
+ * RangedGOO
+ *====================================================================================================================*/
+
+
+template <typename PlanTable>
+void RangeGOO::operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const CostFunction &CF) const
+{
+    const AdjacencyMatrix &M = G.adjacency_matrix();
+    auto &CE = Catalog::Get().get_database_in_use().cardinality_estimator();
+
+    /*----- Initialize subproblems and their neighbors. -----*/
+    node nodes[G.num_sources()];
+    for (std::size_t i = 0; i != G.num_sources(); ++i)
+    {
+        Subproblem S = Subproblem::Singleton(i);
+        Subproblem N = M.neighbors(S);
+        nodes[i] = node(S, N);
+    }
+
+    /*----- Greedyly enumerate joins, thereby computing a plan. -----*/
+    compute_plan(PT, G, M, CF, CE, nodes, nodes + G.num_sources());
+}
+
 
 /*======================================================================================================================
  * TDGOO
@@ -852,6 +876,7 @@ void TDGOO::operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const 
     X(DPsub, "subset-based subproblem enumeration")                                                                   \
     X(DPsubOpt, "optimized DPsub: does not enumerate symmetric subproblems")                                          \
     X(GOO, "Greedy Operator Ordering")                                                                                \
+    X(RangeGOO, "Range-aware Greedy Operator Ordering") \
     X(TDGOO, "Top-down variant of Greedy Operator Ordering")                                                          \
     X(IKKBZ, "greedy algorithm by IK/KBZ, ordering joins by rank")                                                    \
     X(LinearizedDP, "DP with search space linearization based on IK/KBZ")                                             \

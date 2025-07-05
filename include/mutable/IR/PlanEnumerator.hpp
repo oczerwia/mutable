@@ -265,6 +265,80 @@ namespace m
             void operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const CostFunction &CF) const;
         };
 
+        /** Range-based greedy operator ordering. */
+        struct M_EXPORT RangeGOO : PlanEnumeratorCRTP<RangeGOO>
+        {
+            using base_type = PlanEnumeratorCRTP<RangeGOO>;
+            using base_type::operator();
+
+            // Reuse GOO's node structure
+            using node = GOO::node;
+
+            // Updated for_each_join that uses ranges when available
+            template <typename Callback, typename PlanTable>
+            void for_each_join(Callback &&callback, PlanTable &PT, const QueryGraph &G, const AdjacencyMatrix &M,
+                               const CostFunction &, const CardinalityEstimator &CE, node *begin, node *end) const
+            {
+                // Similar to GOO but using ranges
+                while (begin + 1 != end)
+                {
+                    // Find best join pair based on ranges
+                    node *left = nullptr, *right = nullptr;
+                    double least_upper_bound = std::numeric_limits<double>::infinity();
+
+                    // For each potential join pair
+                    for (node *outer = begin; outer != end; ++outer)
+                    {
+                        for (node *inner = std::next(outer); inner != end; ++inner)
+                        {
+                            if (*outer & *inner)
+                            { // can merge
+                                const Subproblem joined = outer->subproblem | inner->subproblem;
+
+                                // Create model if needed
+                                if (not PT[joined].model)
+                                    PT[joined].model = CE.estimate_join(G, *PT[outer->subproblem].model,
+                                                                        *PT[inner->subproblem].model, cnf::CNF{});
+
+                                // Get range or point estimate
+                                double upper_bound;
+                                if (PT[joined].model->has_range())
+                                    upper_bound = PT[joined].model->get_range().second;
+                                else
+                                    upper_bound = CE.predict_cardinality(*PT[joined].model);
+
+                                if (upper_bound < least_upper_bound)
+                                {
+                                    least_upper_bound = upper_bound;
+                                    left = outer;
+                                    right = inner;
+                                }
+                            }
+                        }
+                    }
+
+                    // Process the join as in GOO
+                    callback(left->subproblem, right->subproblem);
+                    *left += *right;
+                    std::swap(*right, *--end);
+                }
+            }
+
+            template <typename PlanTable>
+            void compute_plan(PlanTable &PT, const QueryGraph &G, const AdjacencyMatrix &M,
+                              const CostFunction &CF, const CardinalityEstimator &CE, node *begin, node *end) const
+            {
+                // Same as GOO but using our for_each_join
+                for_each_join([&](const Subproblem left, const Subproblem right)
+                              {
+                    static cnf::CNF condition;
+                    PT.update(G, CE, CF, left, right, condition); }, PT, G, M, CF, CE, begin, end);
+            }
+
+            template <typename PlanTable>
+            void operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const CostFunction &CF) const;
+        };
+
     }
 
 }

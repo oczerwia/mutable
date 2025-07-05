@@ -18,17 +18,17 @@
 #include <mutable/util/Pool.hpp>
 #include <nlohmann/json.hpp>
 
-
 using namespace m;
 
+namespace
+{
 
-namespace {
+    namespace options
+    {
 
-namespace options {
+        std::filesystem::path injected_cardinalities_file;
 
-std::filesystem::path injected_cardinalities_file;
-
-}
+    }
 
 }
 
@@ -36,11 +36,11 @@ std::filesystem::path injected_cardinalities_file;
  * CardinalityEstimator
  *====================================================================================================================*/
 
-DataModel::~DataModel() { }
+DataModel::~DataModel() {}
 
-CardinalityEstimator::~CardinalityEstimator() { }
+CardinalityEstimator::~CardinalityEstimator() {}
 
-double CardinalityEstimator::predict_number_distinct_values(const DataModel&) const
+double CardinalityEstimator::predict_number_distinct_values(const DataModel &) const
 {
     throw data_model_exception("predicting the number of distinct values is not supported by this data model.");
 };
@@ -54,7 +54,6 @@ void CardinalityEstimator::dump(std::ostream &out) const
 
 void CardinalityEstimator::dump() const { dump(std::cerr); }
 M_LCOV_EXCL_STOP
-
 
 /*======================================================================================================================
  * CartesianProductEstimator
@@ -78,7 +77,7 @@ std::unique_ptr<DataModel> CartesianProductEstimator::estimate_scan(const QueryG
 }
 
 std::unique_ptr<DataModel>
-CartesianProductEstimator::estimate_filter(const QueryGraph&, const DataModel &_data, const cnf::CNF&) const
+CartesianProductEstimator::estimate_filter(const QueryGraph &, const DataModel &_data, const cnf::CNF &) const
 {
     /* This model cannot estimate the effects of applying a filter. */
     auto &data = as<const CartesianProductDataModel>(_data);
@@ -86,7 +85,7 @@ CartesianProductEstimator::estimate_filter(const QueryGraph&, const DataModel &_
 }
 
 std::unique_ptr<DataModel>
-CartesianProductEstimator::estimate_limit(const QueryGraph&, const DataModel &_data, std::size_t limit,
+CartesianProductEstimator::estimate_limit(const QueryGraph &, const DataModel &_data, std::size_t limit,
                                           std::size_t offset) const
 {
     auto data = as<const CartesianProductDataModel>(_data);
@@ -97,8 +96,8 @@ CartesianProductEstimator::estimate_limit(const QueryGraph&, const DataModel &_d
 }
 
 std::unique_ptr<DataModel>
-CartesianProductEstimator::estimate_grouping(const QueryGraph&, const DataModel &_data,
-                                             const std::vector<group_type>&) const
+CartesianProductEstimator::estimate_grouping(const QueryGraph &, const DataModel &_data,
+                                             const std::vector<group_type> &) const
 {
     auto &data = as<const CartesianProductDataModel>(_data);
     auto model = std::make_unique<CartesianProductDataModel>();
@@ -107,8 +106,8 @@ CartesianProductEstimator::estimate_grouping(const QueryGraph&, const DataModel 
 }
 
 std::unique_ptr<DataModel>
-CartesianProductEstimator::estimate_join(const QueryGraph&, const DataModel &_left, const DataModel &_right,
-                                         const cnf::CNF&) const
+CartesianProductEstimator::estimate_join(const QueryGraph &, const DataModel &_left, const DataModel &_right,
+                                         const cnf::CNF &) const
 {
     auto left = as<const CartesianProductDataModel>(_left);
     auto right = as<const CartesianProductDataModel>(_right);
@@ -117,10 +116,10 @@ CartesianProductEstimator::estimate_join(const QueryGraph&, const DataModel &_le
     return model;
 }
 
-template<typename PlanTable>
+template <typename PlanTable>
 std::unique_ptr<DataModel>
-CartesianProductEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph&, Subproblem to_join,
-                                      const cnf::CNF&) const
+CartesianProductEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph &, Subproblem to_join,
+                                      const cnf::CNF &) const
 {
     M_insist(not to_join.empty());
     auto model = std::make_unique<CartesianProductDataModel>();
@@ -130,14 +129,12 @@ CartesianProductEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, con
     return model;
 }
 
-template
-std::unique_ptr<DataModel>
-CartesianProductEstimator::operator()(estimate_join_all_tag, const PlanTableSmallOrDense&, const QueryGraph&,
-                                      Subproblem, const cnf::CNF&) const;
-template
-std::unique_ptr<DataModel>
-CartesianProductEstimator::operator()(estimate_join_all_tag, const PlanTableLargeAndSparse&, const QueryGraph&,
-                                      Subproblem, const cnf::CNF&) const;
+template std::unique_ptr<DataModel>
+CartesianProductEstimator::operator()(estimate_join_all_tag, const PlanTableSmallOrDense &, const QueryGraph &,
+                                      Subproblem, const cnf::CNF &) const;
+template std::unique_ptr<DataModel>
+CartesianProductEstimator::operator()(estimate_join_all_tag, const PlanTableLargeAndSparse &, const QueryGraph &,
+                                      Subproblem, const cnf::CNF &) const;
 
 std::size_t CartesianProductEstimator::predict_cardinality(const DataModel &data) const
 {
@@ -151,8 +148,6 @@ void CartesianProductEstimator::print(std::ostream &out) const
 }
 M_LCOV_EXCL_STOP
 
-
-
 /*======================================================================================================================
  * RangeCartesianProductEstimator
  *====================================================================================================================*/
@@ -160,7 +155,8 @@ M_LCOV_EXCL_STOP
 std::unique_ptr<DataModel> RangeCartesianProductEstimator::empty_model() const
 {
     auto model = std::make_unique<RangeCartesianProductDataModel>();
-    model->size = 0;
+    model->set_cardinality(0);
+    model->set_range({0.0, 0.0});
     return model;
 }
 
@@ -169,84 +165,181 @@ std::unique_ptr<DataModel> RangeCartesianProductEstimator::estimate_scan(const Q
     M_insist(P.size() == 1, "Subproblem must identify exactly one DataSource");
     auto idx = *P.begin();
     auto &BT = as<const BaseTable>(*G.sources()[idx]);
-    auto model = std::make_unique<RangeCartesianProductDataModel>();
-    model->size = BT.table().store().num_rows();
+    double num_rows = static_cast<double>(BT.table().store().num_rows());
+
+    auto model = std::make_unique<RangeCartesianProductDataModel>(num_rows);
+    model->set_range({num_rows, num_rows}); // exact range for scan
     return model;
 }
 
 std::unique_ptr<DataModel>
-RangeCartesianProductEstimator::estimate_filter(const QueryGraph&, const DataModel &_data, const cnf::CNF&) const
+RangeCartesianProductEstimator::estimate_filter(const QueryGraph &G, const DataModel &data, const cnf::CNF &filter) const
 {
-    /* This model cannot estimate the effects of applying a filter. */
-    auto &data = as<const RangeCartesianProductDataModel>(_data);
-    return std::make_unique<RangeCartesianProductDataModel>(data); // copy
+    auto &model = as<const RangeCartesianProductDataModel>(data);
+    auto result = std::make_unique<RangeCartesianProductDataModel>();
+
+    if (filter.empty())
+    {
+        result->set_cardinality(model.size);
+        if (model.has_range())
+            result->set_range(model.get_range());
+        return result;
+    }
+
+    // TODO: Need to update later when changing from cartesian product to selectivity based!
+    auto range = model.has_range() ? model.get_range() : std::make_pair(double(model.size), double(model.size));
+
+    // Simple filter model: reduce by 30-70% (add range uncertainty)
+    double low_selectivity = 0.3;  // reduce by at most 70%
+    double high_selectivity = 0.7; // reduce by at least 30%
+
+    result->set_cardinality(model.size * high_selectivity);
+    result->set_range({range.first * low_selectivity, range.second * high_selectivity});
+    return result;
 }
 
 std::unique_ptr<DataModel>
-RangeCartesianProductEstimator::estimate_limit(const QueryGraph&, const DataModel &_data, std::size_t limit,
-                                              std::size_t offset) const
+RangeCartesianProductEstimator::estimate_limit(const QueryGraph &G, const DataModel &data, std::size_t limit,
+                                               std::size_t offset) const
 {
-    auto data = as<const RangeCartesianProductDataModel>(_data);
-    const std::size_t remaining = offset > data.size ? 0UL : data.size - offset;
-    auto model = std::make_unique<RangeCartesianProductDataModel>();
-    model->size = std::min(remaining, limit);
-    return model;
+    auto &model = as<const RangeCartesianProductDataModel>(data);
+    auto result = std::make_unique<RangeCartesianProductDataModel>();
+
+    std::size_t size = std::min(limit, model.size);
+    if (offset < model.size)
+        size = std::min(size, model.size - offset);
+    else
+        size = 0;
+
+    result->set_cardinality(size);
+
+    if (model.has_range())
+    {
+        auto range = model.get_range();
+        double min_size = std::min(double(limit), std::max(0.0, range.first - offset));
+        double max_size = std::min(double(limit), std::max(0.0, range.second - offset));
+        result->set_range({min_size, max_size});
+    }
+    else
+    {
+        result->set_range({double(size), double(size)});
+    }
+    return result;
 }
 
 std::unique_ptr<DataModel>
-RangeCartesianProductEstimator::estimate_grouping(const QueryGraph&, const DataModel &_data,
-                                                 const std::vector<group_type>&) const
+RangeCartesianProductEstimator::estimate_grouping(const QueryGraph &G, const DataModel &data,
+                                                  const std::vector<group_type> &groups) const
 {
-    auto &data = as<const RangeCartesianProductDataModel>(_data);
-    auto model = std::make_unique<RangeCartesianProductDataModel>();
-    model->size = data.size; // this model cannot estimate the effects of grouping
-    return model;
+    auto &model = as<const RangeCartesianProductDataModel>(data);
+    auto result = std::make_unique<RangeCartesianProductDataModel>();
+
+    // TODO: Need to update later when changing from cartesian product to selectivity based!
+    std::size_t size = std::min(model.size, std::size_t(groups.empty() ? 1 : model.size));
+    result->set_cardinality(size);
+
+    if (model.has_range())
+    {
+        auto range = model.get_range();
+        // For grouping, range depends on group key selectivity
+        // Worst case: all values are unique (upper bound = input size)
+        // Best case: all values are the same (lower bound = 1)
+        double min_size = groups.empty() ? 1.0 : 1.0;          // At least one group
+        double max_size = groups.empty() ? 1.0 : range.second; // At most one group per row
+        result->set_range({min_size, max_size});
+    }
+    else
+    {
+        result->set_range({double(size), double(size)});
+    }
+    return result;
 }
 
 std::unique_ptr<DataModel>
-RangeCartesianProductEstimator::estimate_join(const QueryGraph&, const DataModel &_left, const DataModel &_right,
-                                              const cnf::CNF&) const
+RangeCartesianProductEstimator::estimate_join(const QueryGraph &G, const DataModel &left, const DataModel &right,
+                                              const cnf::CNF &condition) const
 {
-    auto left = as<const RangeCartesianProductDataModel>(_left);
-    auto right = as<const RangeCartesianProductDataModel>(_right);
-    auto model = std::make_unique<RangeCartesianProductDataModel>();
-    model->size = left.size * right.size; // this model cannot estimate the effects of a join condition
-    return model;
+    auto &left_model = as<const RangeCartesianProductDataModel>(left);
+    auto &right_model = as<const RangeCartesianProductDataModel>(right);
+    auto result = std::make_unique<RangeCartesianProductDataModel>();
+
+    // Get point estimates
+    result->set_cardinality(left_model.size * right_model.size);
+
+    // Get ranges
+    std::pair<double, double> left_range = left_model.has_range() ? left_model.get_range() : std::make_pair(double(left_model.size), double(left_model.size));
+    std::pair<double, double> right_range = right_model.has_range() ? right_model.get_range() : std::make_pair(double(right_model.size), double(right_model.size));
+
+    if (condition.empty())
+    {
+        // Cartesian product with ranges
+        double min_result = left_range.first * right_range.first;
+        double max_result = left_range.second * right_range.second;
+        result->set_range({min_result, max_result});
+    }
+    else
+    {
+        // Join with selectivity bounds
+        // For joins with conditions, introduce range uncertainty
+        double low_selectivity = 0.001; // Highly selective join possible (0.1%)
+        double high_selectivity = 0.1;  // Less selective join possible (10%)
+
+        double min_result = std::min(left_range.first, right_range.first) * low_selectivity;
+        double max_result = left_range.second * right_range.second * high_selectivity;
+        result->set_range({min_result, max_result});
+    }
+
+    return result;
 }
 
-template<typename PlanTable>
+template <typename PlanTable>
 std::unique_ptr<DataModel>
-RangeCartesianProductEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph&, Subproblem to_join,
-                                           const cnf::CNF&) const
+RangeCartesianProductEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph &G, Subproblem to_join,
+                                           const cnf::CNF &condition) const
 {
     M_insist(not to_join.empty());
     auto model = std::make_unique<RangeCartesianProductDataModel>();
-    model->size = 1UL;
+    model->set_cardinality(1UL);
+    model->set_range({1.0, 1.0});
+
+    std::pair<double, double> total_range = {1.0, 1.0};
+
     for (auto it = to_join.begin(); it != to_join.end(); ++it)
-        model->size *= as<const RangeCartesianProductDataModel>(*PT[it.as_set()].model).size;
+    {
+        auto submodel = as<const RangeCartesianProductDataModel>(*PT[it.as_set()].model);
+        model->set_cardinality(model->size * submodel.size);
+
+        // Multiply ranges
+        if (submodel.has_range())
+        {
+            auto range = submodel.get_range();
+            total_range.first *= range.first;
+            total_range.second *= range.second;
+        }
+        else
+        {
+            total_range.first *= submodel.size;
+            total_range.second *= submodel.size;
+        }
+    }
+
+    model->set_range(total_range);
     return model;
 }
 
-template
-std::unique_ptr<DataModel>
-RangeCartesianProductEstimator::operator()(estimate_join_all_tag, const PlanTableSmallOrDense&, const QueryGraph&,
-                                           Subproblem, const cnf::CNF&) const;
-template
-std::unique_ptr<DataModel>
-RangeCartesianProductEstimator::operator()(estimate_join_all_tag, const PlanTableLargeAndSparse&, const QueryGraph&,
-                                           Subproblem, const cnf::CNF&) const;
-
 std::size_t RangeCartesianProductEstimator::predict_cardinality(const DataModel &data) const
 {
-    return as<const RangeCartesianProductDataModel>(data).size;
+    auto &model = as<const RangeCartesianProductDataModel>(data);
+    // Use upper bound for conservative estimate
+    if (model.has_range())
+        return model.get_range().second;
+    return model.size;
 }
 
-M_LCOV_EXCL_START
 void RangeCartesianProductEstimator::print(std::ostream &out) const
 {
-    out << "RangeCartesianProductEstimator - returns size of the Cartesian product of the given subproblems";
+    out << "RangeCartesianProductEstimator";
 }
-M_LCOV_EXCL_STOP
 
 /*======================================================================================================================
  * InjectionCardinalityEstimator
@@ -260,13 +353,19 @@ InjectionCardinalityEstimator::InjectionCardinalityEstimator(ThreadSafePooledStr
     Diagnostic diag(Options::Get().has_color, std::cout, std::cerr);
     Position pos("InjectionCardinalityEstimator");
 
-    if (options::injected_cardinalities_file.empty()) {
+    if (options::injected_cardinalities_file.empty())
+    {
         std::cout << "No injection file was passed.\n";
-    } else {
+    }
+    else
+    {
         std::ifstream in(options::injected_cardinalities_file);
-        if (in) {
+        if (in)
+        {
             read_json(diag, in, name_of_database);
-        } else {
+        }
+        else
+        {
             diag.w(pos) << "Could not open file " << options::injected_cardinalities_file << ".\n"
                         << "A dummy estimator will be used to do estimations.\n";
         }
@@ -289,31 +388,41 @@ void InjectionCardinalityEstimator::read_json(Diagnostic &diag, std::istream &in
 
     using json = nlohmann::json;
     json cardinalities;
-    try {
+    try
+    {
         in >> cardinalities;
-    } catch (json::parse_error parse_error) {
+    }
+    catch (json::parse_error parse_error)
+    {
         diag.w(pos) << "The file could not be parsed as json. Parser error output:\n"
                     << parse_error.what() << "\n"
                     << "A dummy estimator will be used to do estimations.\n";
         return;
     }
     json *database_entry;
-    try {
-        database_entry = &cardinalities.at(*name_of_database); //throws if key does not exist
-    } catch (json::out_of_range &out_of_range) {
+    try
+    {
+        database_entry = &cardinalities.at(*name_of_database); // throws if key does not exist
+    }
+    catch (json::out_of_range &out_of_range)
+    {
         diag.w(pos) << "No entry for the db " << name_of_database << " in the file.\n"
                     << "A dummy estimator will be used to do estimations.\n";
         return;
     }
     cardinality_table_.reserve(database_entry->size());
     std::vector<std::string> names;
-    for (auto &subproblem_entry : *database_entry) {
-        json* relations_array;
-        json* size;
-        try {
+    for (auto &subproblem_entry : *database_entry)
+    {
+        json *relations_array;
+        json *size;
+        try
+        {
             relations_array = &subproblem_entry.at("relations");
             size = &subproblem_entry.at("size");
-        } catch (json::exception &exception) {
+        }
+        catch (json::exception &exception)
+        {
             diag.w(pos) << "The entry " << subproblem_entry << " for the db \"" << name_of_database << "\""
                         << " does not have the required form of {\"relations\": ..., \"size\": ... } "
                         << "and will thus be ignored.\n";
@@ -326,7 +435,8 @@ void InjectionCardinalityEstimator::read_json(Diagnostic &diag, std::istream &in
         std::sort(names.begin(), names.end());
 
         buf_.clear();
-        for (auto it = names.begin(); it != names.end(); ++it) {
+        for (auto it = names.begin(); it != names.end(); ++it)
+        {
             if (it != names.begin())
                 buf_.emplace_back('$');
             buf_append(*it);
@@ -351,9 +461,12 @@ std::unique_ptr<DataModel> InjectionCardinalityEstimator::estimate_scan(const Qu
     const auto idx = *P.begin();
     auto &DS = *G.sources()[idx];
 
-    if (auto it = cardinality_table_.find(DS.name().assert_not_none()); it != cardinality_table_.end()) {
+    if (auto it = cardinality_table_.find(DS.name().assert_not_none()); it != cardinality_table_.end())
+    {
         return std::make_unique<InjectionCardinalityDataModel>(P, it->second);
-    } else {
+    }
+    else
+    {
         /* no match, fall back */
         auto fallback_model = fallback_.estimate_scan(G, P);
         return std::make_unique<InjectionCardinalityDataModel>(P, fallback_.predict_cardinality(*fallback_model));
@@ -361,7 +474,7 @@ std::unique_ptr<DataModel> InjectionCardinalityEstimator::estimate_scan(const Qu
 }
 
 std::unique_ptr<DataModel>
-InjectionCardinalityEstimator::estimate_filter(const QueryGraph&, const DataModel &_data, const cnf::CNF&) const
+InjectionCardinalityEstimator::estimate_filter(const QueryGraph &, const DataModel &_data, const cnf::CNF &) const
 {
     /* This model cannot estimate the effects of applying a filter. */
     auto &data = as<const InjectionCardinalityDataModel>(_data);
@@ -369,7 +482,7 @@ InjectionCardinalityEstimator::estimate_filter(const QueryGraph&, const DataMode
 }
 
 std::unique_ptr<DataModel>
-InjectionCardinalityEstimator::estimate_limit(const QueryGraph&, const DataModel &_data, std::size_t limit,
+InjectionCardinalityEstimator::estimate_limit(const QueryGraph &, const DataModel &_data, std::size_t limit,
                                               std::size_t offset) const
 {
     auto &data = as<const InjectionCardinalityDataModel>(_data);
@@ -378,7 +491,7 @@ InjectionCardinalityEstimator::estimate_limit(const QueryGraph&, const DataModel
 }
 
 std::unique_ptr<DataModel>
-InjectionCardinalityEstimator::estimate_grouping(const QueryGraph&, const DataModel &_data,
+InjectionCardinalityEstimator::estimate_grouping(const QueryGraph &, const DataModel &_data,
                                                  const std::vector<group_type> &exprs) const
 {
     auto &data = as<const InjectionCardinalityDataModel>(_data);
@@ -389,7 +502,8 @@ InjectionCardinalityEstimator::estimate_grouping(const QueryGraph&, const DataMo
     /* Combine grouping keys into an identifier. */
     oss_.str("");
     oss_ << "g";
-    for (auto [grp, alias] : exprs) {
+    for (auto [grp, alias] : exprs)
+    {
         oss_ << '#';
         if (alias.has_value())
             oss_ << alias;
@@ -398,11 +512,14 @@ InjectionCardinalityEstimator::estimate_grouping(const QueryGraph&, const DataMo
     }
     ThreadSafePooledString id = Catalog::Get().pool(oss_.str().c_str());
 
-    if (auto it = cardinality_table_.find(id); it != cardinality_table_.end()) {
+    if (auto it = cardinality_table_.find(id); it != cardinality_table_.end())
+    {
         /* Clamp injected cardinality to at most the cardinality of the grouping's child since it cannot produce more
          * tuples than it receives. */
         return std::make_unique<InjectionCardinalityDataModel>(data.subproblem_, std::min(it->second, data.size_));
-    } else {
+    }
+    else
+    {
         /* This model cannot estimate the effects of grouping. */
         return std::make_unique<InjectionCardinalityDataModel>(data); // copy
     }
@@ -412,19 +529,22 @@ std::unique_ptr<DataModel>
 InjectionCardinalityEstimator::estimate_join(const QueryGraph &G, const DataModel &_left, const DataModel &_right,
                                              const cnf::CNF &condition) const
 {
-    auto &left  = as<const InjectionCardinalityDataModel>(_left);
+    auto &left = as<const InjectionCardinalityDataModel>(_left);
     auto &right = as<const InjectionCardinalityDataModel>(_right);
 
     const Subproblem subproblem = left.subproblem_ | right.subproblem_;
     ThreadSafePooledString id = make_identifier(G, subproblem);
 
     /* Lookup cardinality in table. */
-    if (auto it = cardinality_table_.find(id); it != cardinality_table_.end()) {
+    if (auto it = cardinality_table_.find(id); it != cardinality_table_.end())
+    {
         /* Clamp injected cardinality to at most the cardinality of the cartesian product of the join's children
          * since it cannot produce more tuples than that. */
         const std::size_t max_cardinality = left.size_ * right.size_;
         return std::make_unique<InjectionCardinalityDataModel>(subproblem, std::min(it->second, max_cardinality));
-    } else {
+    }
+    else
+    {
         /* Fallback to CartesianProductEstimator. */
         if (not Options::Get().quiet)
             std::cerr << "warning: failed to estimate the join of " << left.subproblem_ << " and " << right.subproblem_
@@ -439,20 +559,23 @@ InjectionCardinalityEstimator::estimate_join(const QueryGraph &G, const DataMode
     }
 }
 
-template<typename PlanTable>
+template <typename PlanTable>
 std::unique_ptr<DataModel>
 InjectionCardinalityEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph &G,
-                                          Subproblem to_join, const cnf::CNF&) const
+                                          Subproblem to_join, const cnf::CNF &) const
 {
     ThreadSafePooledString id = make_identifier(G, to_join);
-    if (auto it = cardinality_table_.find(id); it != cardinality_table_.end()) {
+    if (auto it = cardinality_table_.find(id); it != cardinality_table_.end())
+    {
         /* Clamp injected cardinality to at most the cardinality of the cartesian product of the join's children
          * since it cannot produce more tuples than that. */
         std::size_t max_cardinality = 1;
         for (auto it = to_join.begin(); it != to_join.end(); ++it)
             max_cardinality *= as<const InjectionCardinalityDataModel>(*PT[it.as_set()].model).size_;
         return std::make_unique<InjectionCardinalityDataModel>(to_join, std::min(it->second, max_cardinality));
-    } else {
+    }
+    else
+    {
         /* Fallback to cartesian product. */
         if (not Options::Get().quiet)
             std::cerr << "warning: failed to estimate the join of all data sources in " << to_join << '\n';
@@ -464,15 +587,13 @@ InjectionCardinalityEstimator::operator()(estimate_join_all_tag, PlanTable &&PT,
     }
 }
 
-template
-std::unique_ptr<DataModel>
-InjectionCardinalityEstimator::operator()(estimate_join_all_tag, const PlanTableSmallOrDense&, const QueryGraph&,
-                                          Subproblem, const cnf::CNF&) const;
+template std::unique_ptr<DataModel>
+InjectionCardinalityEstimator::operator()(estimate_join_all_tag, const PlanTableSmallOrDense &, const QueryGraph &,
+                                          Subproblem, const cnf::CNF &) const;
 
-template
-std::unique_ptr<DataModel>
-InjectionCardinalityEstimator::operator()(estimate_join_all_tag, const PlanTableLargeAndSparse&, const QueryGraph&,
-                                          Subproblem, const cnf::CNF&) const;
+template std::unique_ptr<DataModel>
+InjectionCardinalityEstimator::operator()(estimate_join_all_tag, const PlanTableLargeAndSparse &, const QueryGraph &,
+                                          Subproblem, const cnf::CNF &) const;
 
 std::size_t InjectionCardinalityEstimator::predict_cardinality(const DataModel &data) const
 {
@@ -482,18 +603,21 @@ std::size_t InjectionCardinalityEstimator::predict_cardinality(const DataModel &
 M_LCOV_EXCL_START
 void InjectionCardinalityEstimator::print(std::ostream &out) const
 {
-    constexpr uint32_t max_rows_printed = 100;     /// Number of rows of the cardinality_table printed
-    std::size_t sub_len = 13;                         /// Length of Subproblem column
+    constexpr uint32_t max_rows_printed = 100; /// Number of rows of the cardinality_table printed
+    std::size_t sub_len = 13;                  /// Length of Subproblem column
     for (auto &entry : cardinality_table_)
         sub_len = std::max(sub_len, strlen(*entry.first));
 
     out << std::left << "InjectionCardinalityEstimator\n"
-        << std::setw(sub_len) << "Subproblem" << "Size" << "\n" << std::right;
+        << std::setw(sub_len) << "Subproblem" << "Size" << "\n"
+        << std::right;
 
     /* ------- Print maximum max_rows_printed rows of the cardinality_table_ */
     uint32_t counter = 0;
-    for (auto &entry : cardinality_table_) {
-        if (counter >= max_rows_printed) break;
+    for (auto &entry : cardinality_table_)
+    {
+        if (counter >= max_rows_printed)
+            break;
         out << std::left << std::setw(sub_len) << entry.first << entry.second << "\n";
         counter++;
     }
@@ -507,10 +631,12 @@ ThreadSafePooledString InjectionCardinalityEstimator::make_identifier(const Quer
     names.clear();
     for (auto id : S)
         names.emplace_back(G.sources()[id]->name());
-    std::sort(names.begin(), names.end(), [](auto lhs, auto rhs){ return strcmp(*lhs, *rhs) < 0; });
+    std::sort(names.begin(), names.end(), [](auto lhs, auto rhs)
+              { return strcmp(*lhs, *rhs) < 0; });
 
     buf_.clear();
-    for (auto it = names.begin(); it != names.end(); ++it) {
+    for (auto it = names.begin(); it != names.end(); ++it)
+    {
         if (it != names.begin())
             buf_.emplace_back('$');
         buf_append(**it);
@@ -520,50 +646,59 @@ ThreadSafePooledString InjectionCardinalityEstimator::make_identifier(const Quer
     return C.pool(buf_view());
 }
 
-
 /*======================================================================================================================
  * SpnEstimator
  *====================================================================================================================*/
 
-namespace {
+namespace
+{
 
-/** Visitor to translate a CNF to an Spn filter. Only consider sargable expressions. */
-struct FilterTranslator : ast::ConstASTExprVisitor {
-    Catalog &C = Catalog::Get();
-    ThreadSafePooledString attribute;
-    float value;
-    Spn::SpnOperator op;
+    /** Visitor to translate a CNF to an Spn filter. Only consider sargable expressions. */
+    struct FilterTranslator : ast::ConstASTExprVisitor
+    {
+        Catalog &C = Catalog::Get();
+        ThreadSafePooledString attribute;
+        float value;
+        Spn::SpnOperator op;
 
-    FilterTranslator() : attribute(C.pool("")), value(0), op(Spn::EQUAL) { }
+        FilterTranslator() : attribute(C.pool("")), value(0), op(Spn::EQUAL) {}
 
-    using ConstASTExprVisitor::operator();
+        using ConstASTExprVisitor::operator();
 
-    void operator()(const ast::Designator &designator) { attribute = designator.attr_name.text.assert_not_none(); }
+        void operator()(const ast::Designator &designator) { attribute = designator.attr_name.text.assert_not_none(); }
 
-    void operator()(const ast::Constant &constant) {
-        auto val = Interpreter::eval(constant);
+        void operator()(const ast::Constant &constant)
+        {
+            auto val = Interpreter::eval(constant);
 
-        visit(overloaded {
-                [&val, this](const Numeric &numeric) {
-                    switch (numeric.kind) {
-                        case Numeric::N_Int:
-                            value = float(val.as_i());
-                            break;
-                        case Numeric::N_Float:
-                            value = val.as_f();
-                            break;
-                        case Numeric::N_Decimal:
-                            value = float(val.as_d());
-                            break;
-                    }
-                },
-                [this](const NoneType&) { op = Spn::IS_NULL; },
-                [](auto&&) { M_unreachable("Unsupported type."); },
-        }, *constant.type());
-    }
+            visit(overloaded{
+                      [&val, this](const Numeric &numeric)
+                      {
+                          switch (numeric.kind)
+                          {
+                          case Numeric::N_Int:
+                              value = float(val.as_i());
+                              break;
+                          case Numeric::N_Float:
+                              value = val.as_f();
+                              break;
+                          case Numeric::N_Decimal:
+                              value = float(val.as_d());
+                              break;
+                          }
+                      },
+                      [this](const NoneType &)
+                      { op = Spn::IS_NULL; },
+                      [](auto &&)
+                      { M_unreachable("Unsupported type."); },
+                  },
+                  *constant.type());
+        }
 
-    void operator()(const ast::BinaryExpr &binary_expr) {
-        switch (binary_expr.op().type) {
+        void operator()(const ast::BinaryExpr &binary_expr)
+        {
+            switch (binary_expr.op().type)
+            {
             case TK_EQUAL:
                 op = Spn::EQUAL;
                 break;
@@ -581,43 +716,49 @@ struct FilterTranslator : ast::ConstASTExprVisitor {
                 break;
             default:
                 M_unreachable("Operator can't be handled");
+            }
+
+            (*this)(*binary_expr.lhs);
+            (*this)(*binary_expr.rhs);
         }
 
-        (*this)(*binary_expr.lhs);
-        (*this)(*binary_expr.rhs);
-    }
+        void operator()(const ast::ErrorExpr &) { /* nothing to be done */ }
+        void operator()(const ast::FnApplicationExpr &) { /* nothing to be done */ }
+        void operator()(const ast::UnaryExpr &) { /* nothing to be done */ }
+        void operator()(const ast::QueryExpr &) { /* nothing to be done */ }
+    };
 
-    void operator()(const ast::ErrorExpr&) { /* nothing to be done */ }
-    void operator()(const ast::FnApplicationExpr &) { /* nothing to be done */ }
-    void operator()(const ast::UnaryExpr &) { /* nothing to be done */ }
-    void operator()(const ast::QueryExpr &) { /* nothing to be done */ }
-};
+    /** Visitor to translate a CNF join condition (get the two identifiers of an equi Join). */
+    struct JoinTranslator : ast::ConstASTExprVisitor
+    {
 
-/** Visitor to translate a CNF join condition (get the two identifiers of an equi Join). */
-struct JoinTranslator : ast::ConstASTExprVisitor {
+        std::vector<std::pair<ThreadSafePooledString, ThreadSafePooledString>> join_designator;
 
-    std::vector<std::pair<ThreadSafePooledString, ThreadSafePooledString>> join_designator;
+        using ConstASTExprVisitor::operator();
 
-    using ConstASTExprVisitor::operator();
+        void operator()(const ast::Designator &designator)
+        {
+            join_designator.emplace_back(designator.table_name.text, designator.attr_name.text);
+        }
 
-    void operator()(const ast::Designator &designator) {
-        join_designator.emplace_back(designator.table_name.text, designator.attr_name.text);
-    }
+        void operator()(const ast::BinaryExpr &binary_expr)
+        {
 
-    void operator()(const ast::BinaryExpr &binary_expr) {
+            if (binary_expr.op().type != m::TK_EQUAL)
+            {
+                M_unreachable("Operator can't be handled");
+            }
 
-        if (binary_expr.op().type != m::TK_EQUAL) { M_unreachable("Operator can't be handled"); }
+            (*this)(*binary_expr.lhs);
+            (*this)(*binary_expr.rhs);
+        }
 
-        (*this)(*binary_expr.lhs);
-        (*this)(*binary_expr.rhs);
-    }
-
-    void operator()(const ast::Constant &) { /* nothing to be done */ }
-    void operator()(const ast::ErrorExpr&) { /* nothing to be done */ }
-    void operator()(const ast::FnApplicationExpr &) { /* nothing to be done */ }
-    void operator()(const ast::UnaryExpr &) { /* nothing to be done */ }
-    void operator()(const ast::QueryExpr &) { /* nothing to be done */ }
-};
+        void operator()(const ast::Constant &) { /* nothing to be done */ }
+        void operator()(const ast::ErrorExpr &) { /* nothing to be done */ }
+        void operator()(const ast::FnApplicationExpr &) { /* nothing to be done */ }
+        void operator()(const ast::UnaryExpr &) { /* nothing to be done */ }
+        void operator()(const ast::QueryExpr &) { /* nothing to be done */ }
+    };
 
 }
 
@@ -633,8 +774,7 @@ void SpnEstimator::learn_new_spn(const ThreadSafePooledString &name_of_table)
 {
     table_to_spn_.emplace(
         name_of_table,
-        new SpnWrapper(SpnWrapper::learn_spn_table(name_of_database_, name_of_table))
-    );
+        new SpnWrapper(SpnWrapper::learn_spn_table(name_of_database_, name_of_table)));
 }
 
 std::pair<unsigned, bool> SpnEstimator::find_spn_id(const SpnDataModel &data, SpnJoin &join)
@@ -647,11 +787,16 @@ std::pair<unsigned, bool> SpnEstimator::find_spn_id(const SpnDataModel &data, Sp
     bool is_primary_key = false;
 
     /* check which identifier of the join corresponds to the table of the spn, get the corresponding attribute id */
-    auto find_iter = table_name == join.first.first ?
-            attr_to_id.find(join.first.second) : attr_to_id.find(join.second.second);
+    auto find_iter = table_name == join.first.first ? attr_to_id.find(join.first.second) : attr_to_id.find(join.second.second);
 
-    if (find_iter != attr_to_id.end()) { spn_id = find_iter->second; }
-    else { is_primary_key = true; }
+    if (find_iter != attr_to_id.end())
+    {
+        spn_id = find_iter->second;
+    }
+    else
+    {
+        is_primary_key = true;
+    }
 
     return {spn_id, is_primary_key};
 }
@@ -689,18 +834,21 @@ std::unique_ptr<DataModel> SpnEstimator::estimate_scan(const QueryGraph &G, Subp
     const auto idx = *P.begin();
     auto &BT = as<const BaseTable>(*G.sources()[idx]);
     /* get the Spn corresponding for the table to scan */
-    if (auto it = table_to_spn_.find(BT.name().assert_not_none()); it != table_to_spn_.end()) {
+    if (auto it = table_to_spn_.find(BT.name().assert_not_none()); it != table_to_spn_.end())
+    {
         table_spn_map spns;
         const SpnWrapper &spn = *it->second;
         spns.emplace(BT.name(), spn);
         return std::make_unique<SpnDataModel>(std::move(spns), spn.num_rows());
-    } else {
+    }
+    else
+    {
         throw data_model_exception("Table does not exist.");
     }
 }
 
 std::unique_ptr<DataModel>
-SpnEstimator::estimate_filter(const QueryGraph&, const DataModel &_data, const cnf::CNF &filter) const
+SpnEstimator::estimate_filter(const QueryGraph &, const DataModel &_data, const cnf::CNF &filter) const
 {
     auto &data = as<const SpnDataModel>(_data);
     M_insist(data.spns_.size() == 1);
@@ -712,14 +860,18 @@ SpnEstimator::estimate_filter(const QueryGraph&, const DataModel &_data, const c
     FilterTranslator ft;
 
     /* only consider clauses with one element, since Spns cannot estimate disjunctions */
-    for (auto &clause : filter) {
+    for (auto &clause : filter)
+    {
         M_insist(clause.size() == 1);
         ft(*clause[0]);
         unsigned spn_id;
 
-        if (auto it = attribute_to_id.find(ft.attribute); it != attribute_to_id.end()) {
+        if (auto it = attribute_to_id.find(ft.attribute); it != attribute_to_id.end())
+        {
             spn_id = it->second;
-        } else {
+        }
+        else
+        {
             throw data_model_exception("Attribute does not exist.");
         }
 
@@ -732,19 +884,20 @@ SpnEstimator::estimate_filter(const QueryGraph&, const DataModel &_data, const c
 }
 
 std::unique_ptr<DataModel>
-SpnEstimator::estimate_limit(const QueryGraph&, const DataModel &data, std::size_t limit, std::size_t) const
+SpnEstimator::estimate_limit(const QueryGraph &, const DataModel &data, std::size_t limit, std::size_t) const
 {
     auto model = std::make_unique<SpnDataModel>(as<const SpnDataModel>(data));
     model->num_rows_ = std::min(model->num_rows_, limit);
     return model;
 }
 
-std::unique_ptr<DataModel> SpnEstimator::estimate_grouping(const QueryGraph&, const DataModel &data,
+std::unique_ptr<DataModel> SpnEstimator::estimate_grouping(const QueryGraph &, const DataModel &data,
                                                            const std::vector<group_type> &groups) const
 {
     auto model = std::make_unique<SpnDataModel>(as<const SpnDataModel>(data));
     std::size_t num_rows = 1;
-    for (auto [grp, alias] : groups) {
+    for (auto [grp, alias] : groups)
+    {
         auto designator = cast<const ast::Designator>(&grp.get());
         if (not designator)
             throw data_model_exception("SpnEstimator only supports Designators and no composed expressions");
@@ -754,9 +907,12 @@ std::unique_ptr<DataModel> SpnEstimator::estimate_grouping(const QueryGraph&, co
 
         auto &spn = spn_it->second.get();
         auto &attr_to_id = spn.get_attribute_to_id();
-        if (auto attr_it = attr_to_id.find(designator->attr_name.text.assert_not_none()); attr_it != attr_to_id.end()) {
+        if (auto attr_it = attr_to_id.find(designator->attr_name.text.assert_not_none()); attr_it != attr_to_id.end())
+        {
             num_rows *= spn.estimate_number_distinct_values(attr_it->second);
-        } else {
+        }
+        else
+        {
             num_rows *= spn.num_rows(); // if attribute is primary key, distinct values = num rows
         }
     }
@@ -765,7 +921,7 @@ std::unique_ptr<DataModel> SpnEstimator::estimate_grouping(const QueryGraph&, co
 }
 
 std::unique_ptr<DataModel>
-SpnEstimator::estimate_join(const QueryGraph&, const DataModel &_left, const DataModel &_right,
+SpnEstimator::estimate_join(const QueryGraph &, const DataModel &_left, const DataModel &_right,
                             const cnf::CNF &condition) const
 {
     auto &left = as<const SpnDataModel>(_left);
@@ -776,7 +932,8 @@ SpnEstimator::estimate_join(const QueryGraph&, const DataModel &_left, const Dat
 
     JoinTranslator jt;
 
-    if (not condition.empty()) {
+    if (not condition.empty())
+    {
         /* only consider single equi join */
         jt(*condition[0][0]);
         auto first_identifier = std::make_pair(jt.join_designator[0].first, jt.join_designator[0].second);
@@ -784,17 +941,23 @@ SpnEstimator::estimate_join(const QueryGraph&, const DataModel &_left, const Dat
         SpnJoin join = std::make_pair(first_identifier, second_identifier);
 
         /* if a data model is only responsible for one table (one spn) add the maximum frequency of the value
-        * of the joined attribute */
-        if (left.spns_.size() == 1) { new_left->max_frequencies_.emplace_back(max_frequency(left, join)); }
-        if (right.spns_.size() == 1) { new_right->max_frequencies_.emplace_back(max_frequency(right, join)); }
+         * of the joined attribute */
+        if (left.spns_.size() == 1)
+        {
+            new_left->max_frequencies_.emplace_back(max_frequency(left, join));
+        }
+        if (right.spns_.size() == 1)
+        {
+            new_right->max_frequencies_.emplace_back(max_frequency(right, join));
+        }
 
         /* compute the estimated cardinality of the join via distinct count estimates.
          * See http://www.cidrdb.org/cidr2021/papers/cidr2021_paper01.pdf */
         std::size_t mf_left = std::accumulate(
-                new_left->max_frequencies_.begin(), new_left->max_frequencies_.end(), 1, std::multiplies<>());
+            new_left->max_frequencies_.begin(), new_left->max_frequencies_.end(), 1, std::multiplies<>());
 
         std::size_t mf_right = std::accumulate(
-                new_right->max_frequencies_.begin(), new_right->max_frequencies_.end(), 1, std::multiplies<>());
+            new_right->max_frequencies_.begin(), new_right->max_frequencies_.end(), 1, std::multiplies<>());
 
         std::size_t left_clause = new_left->num_rows_ / mf_left;
         std::size_t right_clause = new_right->num_rows_ / mf_right;
@@ -802,10 +965,18 @@ SpnEstimator::estimate_join(const QueryGraph&, const DataModel &_left, const Dat
         std::size_t num_rows_join = std::min<std::size_t>(left_clause, right_clause) * mf_left * mf_right;
 
         new_left->num_rows_ = num_rows_join;
-    } else {
+    }
+    else
+    {
         /* compute cartesian product since there is no join condition */
-        if (left.spns_.size() == 1) { new_left->max_frequencies_.emplace_back(left.num_rows_); }
-        if (right.spns_.size() == 1) { new_right->max_frequencies_.emplace_back(right.num_rows_); }
+        if (left.spns_.size() == 1)
+        {
+            new_left->max_frequencies_.emplace_back(left.num_rows_);
+        }
+        if (right.spns_.size() == 1)
+        {
+            new_right->max_frequencies_.emplace_back(right.num_rows_);
+        }
 
         new_left->num_rows_ = left.num_rows_ * right.num_rows_;
     }
@@ -813,19 +984,20 @@ SpnEstimator::estimate_join(const QueryGraph&, const DataModel &_left, const Dat
     /* copy data from new_right to new_left to collect all information in one DataModel */
     new_left->spns_.insert(new_right->spns_.begin(), new_right->spns_.end());
     new_left->max_frequencies_.insert(
-            new_left->max_frequencies_.end(), new_right->max_frequencies_.begin(), new_right->max_frequencies_.end());
+        new_left->max_frequencies_.end(), new_right->max_frequencies_.begin(), new_right->max_frequencies_.end());
 
     return new_left;
 }
 
-template<typename PlanTable>
+template <typename PlanTable>
 std::unique_ptr<DataModel>
-SpnEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph&, Subproblem to_join,
+SpnEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph &, Subproblem to_join,
                          const cnf::CNF &condition) const
 {
     M_insist(not to_join.empty());
     /* compute cartesian product */
-    if (condition.empty()) {
+    if (condition.empty())
+    {
         auto model = std::make_unique<SpnDataModel>();
         model->num_rows_ = 1UL;
         for (auto it = to_join.begin(); it != to_join.end(); ++it)
@@ -836,7 +1008,8 @@ SpnEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph
     /* get all attributes to join on */
     JoinTranslator jt;
     std::unordered_map<ThreadSafePooledString, ThreadSafePooledString> table_to_attribute;
-    for (auto clause : condition) {
+    for (auto clause : condition)
+    {
         jt(*clause[0]);
         table_to_attribute.emplace(jt.join_designator[0].first, jt.join_designator[0].second);
         table_to_attribute.emplace(jt.join_designator[1].first, jt.join_designator[1].second);
@@ -847,27 +1020,33 @@ SpnEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph
     ThreadSafePooledString first_table_name = final_model.spns_.begin()->first;
 
     /* if there is a join condition on this model, get the maximum frequency of the attribute */
-    if (auto find_iter = table_to_attribute.find(first_table_name); find_iter != table_to_attribute.end()) {
+    if (auto find_iter = table_to_attribute.find(first_table_name); find_iter != table_to_attribute.end())
+    {
         final_model.max_frequencies_.emplace_back(max_frequency(final_model, find_iter->second));
     }
     /* else, maximum frequency is set as the number of rows (to compute the cartesian product) */
-    else {
+    else
+    {
         final_model.max_frequencies_.emplace_back(final_model.spns_.begin()->second.get().num_rows());
     }
 
     /* iteratively add the next model to join via distinct count estimates */
-    for (auto it = ++to_join.begin(); it != to_join.end(); it++) {
+    for (auto it = ++to_join.begin(); it != to_join.end(); it++)
+    {
         SpnDataModel model = as<const SpnDataModel>(*PT[it.as_set()].model);
         ThreadSafePooledString table_name = model.spns_.begin()->first;
 
-        if (auto find_iter = table_to_attribute.find(table_name); find_iter != table_to_attribute.end()) {
+        if (auto find_iter = table_to_attribute.find(table_name); find_iter != table_to_attribute.end())
+        {
             model.max_frequencies_.emplace_back(max_frequency(model, find_iter->second));
-        } else {
+        }
+        else
+        {
             model.max_frequencies_.emplace_back(model.spns_.begin()->second.get().num_rows());
         }
 
         std::size_t mf_left = std::accumulate(
-                final_model.max_frequencies_.begin(), final_model.max_frequencies_.end(), 1, std::multiplies<>());
+            final_model.max_frequencies_.begin(), final_model.max_frequencies_.end(), 1, std::multiplies<>());
         std::size_t mf_right = model.max_frequencies_[0];
 
         std::size_t left_clause = final_model.num_rows_ / mf_left;
@@ -891,32 +1070,31 @@ std::size_t SpnEstimator::predict_cardinality(const DataModel &_data) const
     return data.num_rows_;
 }
 
-void SpnEstimator::print(std::ostream&) const { }
+void SpnEstimator::print(std::ostream &) const {}
 
-
-#define LIST_CE(X) \
+#define LIST_CE(X)                                                                                   \
     X(CartesianProductEstimator, "CartesianProduct", "estimates cardinalities as Cartesian product") \
-    X(InjectionCardinalityEstimator, "Injected", "estimates cardinalities based on a JSON file") \
-    X(SpnEstimator, "Spn", "estimates cardinalities based on Sum-Product Networks")
+    X(InjectionCardinalityEstimator, "Injected", "estimates cardinalities based on a JSON file")     \
+    X(SpnEstimator, "Spn", "estimates cardinalities based on Sum-Product Networks")                 \
+    X(RangeCartesianProductEstimator, "RangeCartesianProduct", "range-aware cardinality estimator")
 
-#define INSTANTIATE(TYPE, _1, _2) \
-    template std::unique_ptr<DataModel> TYPE::operator()(estimate_join_all_tag, PlanTableSmallOrDense &&PT, \
-                                                         const QueryGraph &G, Subproblem to_join, \
-                                                         const cnf::CNF &condition) const; \
+#define INSTANTIATE(TYPE, _1, _2)                                                                             \
+    template std::unique_ptr<DataModel> TYPE::operator()(estimate_join_all_tag, PlanTableSmallOrDense &&PT,   \
+                                                         const QueryGraph &G, Subproblem to_join,             \
+                                                         const cnf::CNF &condition) const;                    \
     template std::unique_ptr<DataModel> TYPE::operator()(estimate_join_all_tag, PlanTableLargeAndSparse &&PT, \
-                                                         const QueryGraph &G, Subproblem to_join, \
+                                                         const QueryGraph &G, Subproblem to_join,             \
                                                          const cnf::CNF &condition) const;
 LIST_CE(INSTANTIATE)
 #undef INSTANTIATE
 
-__attribute__((constructor(202)))
-static void register_cardinality_estimators()
+__attribute__((constructor(202))) static void register_cardinality_estimators()
 {
     Catalog &C = Catalog::Get();
 
 #define REGISTER(TYPE, NAME, DESCRIPTION) \
     C.register_cardinality_estimator<TYPE>(C.pool(NAME), DESCRIPTION);
-LIST_CE(REGISTER)
+    LIST_CE(REGISTER)
 #undef REGISTER
 
     C.arg_parser().add<bool>(
@@ -924,7 +1102,8 @@ LIST_CE(REGISTER)
         /* short=       */ nullptr,
         /* long=        */ "--show-cardinality-file-example",
         /* description= */ "show an example of an input JSON file for cardinality injection",
-        [] (bool) {
+        [](bool)
+        {
             std::cout << "\
 Example for injected cardinalities file:\n\
 {\n\
@@ -950,15 +1129,14 @@ Example for injected cardinalities file:\n\
     },\n\
 }\n";
             exit(EXIT_SUCCESS);
-        }
-    );
-    C.arg_parser().add<const char*>(
+        });
+    C.arg_parser().add<const char *>(
         /* group=       */ "Cardinality estimation",
         /* short=       */ nullptr,
         /* long=        */ "--use-cardinality-file",
         /* description= */ "inject cardinalities from the given JSON file",
-        [] (const char *path) {
+        [](const char *path)
+        {
             options::injected_cardinalities_file = path;
-        }
-    );
+        });
 }

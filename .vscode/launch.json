@@ -16,6 +16,22 @@
             "terminal": "integrated"
         },
         {
+            "name": "RangeGOO",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug_shared/bin/shell",
+            "args": [
+                "--plan-enumerator",
+                "RangeGOO",
+                "--cardinality-estimator",
+                "RangeCartesianProduct",
+                "--backend",
+                "Interpreter"
+            ],
+            "cwd": "${workspaceFolder}",
+            "terminal": "integrated"
+        },
+        {
             "name": "DPsizeOpt",
             "type": "lldb",
             "request": "launch",

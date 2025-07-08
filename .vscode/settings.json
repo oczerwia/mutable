@@ -79,6 +79,8 @@
         "hash_map": "cpp",
         "span": "cpp",
         "scoped_allocator": "cpp",
-        "alignedvector3": "cpp"
+        "alignedvector3": "cpp",
+        "*.inc": "cpp",
+        "format": "cpp"
     }
 }

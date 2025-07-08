@@ -29,6 +29,8 @@ namespace m
         double estimated_cardinality = -1.0; // Estimated by optimizer
         double true_cardinality = -1.0;      // Actual from execution
 
+        std::pair<double,double> estimated_range = {-1.0, -1.0};
+
         // Subproblem identification
         Subproblem subproblem; // Complete bitmask
 
@@ -47,7 +49,7 @@ namespace m
         std::set<std::string> filter_strings;
     };
 
-    class ReducedQueryGraph
+    struct ReducedQueryGraph
 
     // add a function with which you can compare the reducedquerygraph with a set of table names or build the reduced query graph from the query graph in the beginning
     // then iterate over the list of sets and return the cardinality if it is there.
@@ -60,6 +62,26 @@ namespace m
         std::set<std::string> source_names_;
         std::set<std::string> source_filters_;
         double cardinality_;
+
+        // NEW: Add range field
+        std::pair<double, double> cardinality_range_ = {-1.0, -1.0}; // -1 indicates unset
+
+        bool has_range() const
+        {
+            return cardinality_range_.first >= 0.0; // Range exists if set to valid values
+        }
+
+        void set_range(const std::pair<double, double> &range)
+        {
+            cardinality_range_ = range;
+            // Keep point estimate (backward compatibility)
+            // cardinality_ already set separately
+        }
+
+        std::pair<double, double> get_range() const
+        {
+            return cardinality_range_;
+        }
 
         // comparison data
         // sources already defined above
@@ -106,6 +128,9 @@ namespace m
         std::vector<ReducedQueryGraph> reduced_query_graphs_;
         // when we find a cardinality, we store it on this variable
         double cardinality_;
+
+        // Storage for found range (similar to cardinality_)
+        std::pair<double, double> cardinality_range_ = {-1.0, -1.0};
 
     public:
         // Delete copy/move constructors and assignment operators
@@ -363,6 +388,11 @@ namespace m
                 if (op.has_info() && op.info().estimated_cardinality > 0)
                 {
                     data->estimated_cardinality = op.info().estimated_cardinality;
+
+                    if (op.info().estimated_range.first >= 0.0)
+                    {
+                        data->estimated_range = op.info().estimated_range;
+                    }
                 }
                 data->true_cardinality = op.get_emitted_tuples();
 
@@ -405,8 +435,6 @@ namespace m
             all_cardinality_data_.clear();
             subproblem_to_data_.clear();
 
-            // Note: We no longer need collect_table_positions since we use current_table_names_
-
             // Traverse and collect cardinalities
             traverse_operator_tree_(root);
 
@@ -416,8 +444,14 @@ namespace m
                 std::cout << "\nCollected " << all_cardinality_data_.size() << " cardinality entries." << std::endl;
                 for (const auto &data : all_cardinality_data_)
                 {
-                    std::cout << "  Subproblem: estimated=" << data->estimated_cardinality
-                              << ", actual=" << data->true_cardinality << std::endl;
+                    std::cout << "  Subproblem: estimated=" << data->estimated_cardinality;
+                    if (data->estimated_range.first >= 0.0)
+                    {
+                        std::cout << ", range_estimated=[" << data->estimated_range.first 
+                                << "-" << data->estimated_range.second << "]";
+                    }
+                    
+                    std::cout << ", actual=" << data->true_cardinality << std::endl;
 
                     std::cout << "    Tables: ";
                     for (const auto &name : data->table_names)
@@ -560,6 +594,74 @@ namespace m
             {
                 std::cout << "Total ReducedQueryGraphs in storage: " << reduced_query_graphs_.size() << std::endl;
             }
+        }
+
+        // NEW: Check if a range exists
+        bool has_stored_cardinality_range(SmallBitset involved_tables)
+        {
+            // Reuse existing logic to find the correct ReducedQueryGraph
+            if (has_stored_cardinality(involved_tables))
+            {
+                // Find the graph we just matched in has_stored_cardinality
+                std::set<std::string> table_names;
+                for (auto pos : involved_tables)
+                {
+                    if (pos < current_table_names_.size())
+                    {
+                        table_names.insert(current_table_names_[pos]);
+                    }
+                }
+
+                for (const auto &stored_query : reduced_query_graphs_)
+                {
+                    if (stored_query.source_names_ == table_names &&
+                        stored_query.source_filters_ == current_filters_)
+                    {
+                        // Check if this graph has a range
+                        if (stored_query.has_range())
+                        {
+                            // Store the range for later retrieval
+                            cardinality_range_ = stored_query.get_range();
+                            return true;
+                        }
+                        return false;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // NEW: Get the stored range
+        std::pair<double, double> get_cardinality_range() const
+        {
+            return cardinality_range_;
+        }
+
+        // NEW: Store a range for a subproblem
+        void store_cardinality_range(const std::set<std::string> &tables,
+                                     const std::pair<double, double> &range,
+                                     double true_cardinality)
+        {
+            // Find or create the ReducedQueryGraph
+            for (auto &graph : reduced_query_graphs_)
+            {
+                if (graph.source_names_ == tables &&
+                    graph.source_filters_ == current_filters_)
+                {
+                    // Update existing graph
+                    graph.cardinality_ = true_cardinality;
+                    graph.set_range(range);
+                    return;
+                }
+            }
+
+            // Create new graph if not found
+            ReducedQueryGraph new_graph;
+            new_graph.source_names_ = tables;
+            new_graph.source_filters_ = current_filters_;
+            new_graph.cardinality_ = true_cardinality;
+            new_graph.set_range(range);
+            reduced_query_graphs_.push_back(new_graph);
         }
 
     private:

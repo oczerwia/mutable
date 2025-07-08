@@ -235,7 +235,6 @@ std::pair<std::unique_ptr<Producer>, PlanTable> Optimizer::optimize_with_plantab
     // Add after logical plan construction but before join enumeration
     // This is typically near the beginning of the optimize() method
 
-
     return {std::move(plan), std::move(PT)};
 }
 
@@ -261,6 +260,10 @@ std::unique_ptr<Producer *[]> Optimizer::optimize_source_plans(const QueryGraph 
             auto source_info = std::make_unique<OperatorInformation>();
             source_info->subproblem = s;
             source_info->estimated_cardinality = CE.predict_cardinality(*PT[s].model);
+            if (PT[s].model->has_range())
+            {
+                source_info->estimated_range = PT[s].model->get_range();
+            }
             source->info(std::move(source_info));
 
             source_plans[ds->id()] = source.release();
@@ -321,7 +324,11 @@ std::unique_ptr<Producer *[]> Optimizer::optimize_source_plans(const QueryGraph 
                 /* Set operator information. */
                 auto source_info = std::make_unique<OperatorInformation>();
                 source_info->subproblem = s;
-                source_info->estimated_cardinality = CE.predict_cardinality(*PT[s].model); // includes filters, if any
+                source_info->estimated_cardinality = CE.predict_cardinality(*PT[s].model);
+                if (PT[s].model->has_range())
+                {
+                    source_info->estimated_range = PT[s].model->get_range();
+                }
                 filtered_ds->info(std::move(source_info));
             }
 
@@ -418,6 +425,10 @@ std::unique_ptr<Producer> Optimizer::construct_join_order(const QueryGraph &G, c
                 auto join_info = std::make_unique<OperatorInformation>();
                 join_info->subproblem = s;
                 join_info->estimated_cardinality = CE.predict_cardinality(*PT[s].model);
+                if (PT[s].model->has_range())
+                {
+                    join_info->estimated_range = PT[s].model->get_range();
+                }
                 join->info(std::move(join_info));
                 return join.release();
             }
@@ -447,6 +458,10 @@ std::unique_ptr<Producer> Optimizer::optimize_plan(const QueryGraph &G, std::uni
         auto info = std::make_unique<OperatorInformation>();
         info->subproblem = Subproblem::All(G.sources().size());
         info->estimated_cardinality = CE.predict_cardinality(*entry.model);
+        if (entry.model->has_range())
+        {
+            info->estimated_range = entry.model->get_range();
+        }
 
         group_by->info(std::move(info));
         plan = std::move(group_by);
@@ -463,6 +478,10 @@ std::unique_ptr<Producer> Optimizer::optimize_plan(const QueryGraph &G, std::uni
         auto info = std::make_unique<OperatorInformation>();
         info->subproblem = Subproblem::All(G.sources().size());
         info->estimated_cardinality = CE.predict_cardinality(*entry.model);
+        if (entry.model->has_range())
+        {
+            info->estimated_range = entry.model->get_range();
+        }
 
         agg->info(std::move(info));
         plan = std::move(agg);
@@ -483,6 +502,10 @@ std::unique_ptr<Producer> Optimizer::optimize_plan(const QueryGraph &G, std::uni
         auto info = std::make_unique<OperatorInformation>();
         info->subproblem = Subproblem::All(G.sources().size());
         info->estimated_cardinality = projection->child(0)->info().estimated_cardinality;
+        if (projection->child(0)->info().estimated_range.first >= 0.0)
+        {
+            info->estimated_range = projection->child(0)->info().estimated_range;
+        }
 
         projection->info(std::move(info));
         plan = std::move(projection);
@@ -499,6 +522,11 @@ std::unique_ptr<Producer> Optimizer::optimize_plan(const QueryGraph &G, std::uni
         auto info = std::make_unique<OperatorInformation>();
         info->subproblem = Subproblem::All(G.sources().size());
         info->estimated_cardinality = order_by->child(0)->info().estimated_cardinality;
+
+        if (order_by->child(0)->info().estimated_range.first >= 0.0)
+        {
+            info->estimated_range = order_by->child(0)->info().estimated_range;
+        }
 
         order_by->info(std::move(info));
         plan = std::move(order_by);
@@ -518,6 +546,10 @@ std::unique_ptr<Producer> Optimizer::optimize_plan(const QueryGraph &G, std::uni
         auto info = std::make_unique<OperatorInformation>();
         info->subproblem = Subproblem::All(G.sources().size());
         info->estimated_cardinality = CE.predict_cardinality(*entry.model);
+        if (entry.model->has_range())
+        {
+            info->estimated_range = entry.model->get_range();
+        }
 
         limit->info(std::move(info));
         plan = std::move(limit);
@@ -552,6 +584,11 @@ std::unique_ptr<Producer> Optimizer::optimize_plan(const QueryGraph &G, std::uni
         auto info = std::make_unique<OperatorInformation>();
         info->subproblem = Subproblem::All(G.sources().size());
         info->estimated_cardinality = projection->child(0)->info().estimated_cardinality;
+
+        if (projection->child(0)->info().estimated_range.first >= 0.0)
+        {
+            info->estimated_range = projection->child(0)->info().estimated_range;
+        }
 
         projection->info(std::move(info));
         plan = std::move(projection);

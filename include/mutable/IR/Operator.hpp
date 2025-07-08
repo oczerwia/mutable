@@ -31,6 +31,8 @@ struct M_EXPORT OperatorInformation
 
     ///> the estimated cardinality of the result set of this `Operator`
     double estimated_cardinality;
+
+    std::pair<double, double> estimated_range;
 };
 
 /** This interface allows for attaching arbitrary data to `Operator` instances. */

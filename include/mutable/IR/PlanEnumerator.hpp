@@ -265,6 +265,30 @@ namespace m
             void operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const CostFunction &CF) const;
         };
 
+        struct RangeComparer
+        {
+            // Simple interface to compare ranges - returns true if a is better than b
+            virtual bool compare(const std::pair<double, double> &a, const std::pair<double, double> &b) const = 0;
+            virtual ~RangeComparer() = default;
+        };
+
+        // Concrete implementations
+        struct UpperBoundComparer : public RangeComparer
+        {
+            bool compare(const std::pair<double, double> &a, const std::pair<double, double> &b) const override
+            {
+                return a.second < b.second;
+            }
+        };
+
+        struct LowerBoundComparer : public RangeComparer
+        {
+            bool compare(const std::pair<double, double> &a, const std::pair<double, double> &b) const override
+            {
+                return a.first < b.first;
+            }
+        };
+
         /** Range-based greedy operator ordering. */
         struct M_EXPORT RangeGOO : PlanEnumeratorCRTP<RangeGOO>
         {
@@ -274,42 +298,69 @@ namespace m
             // Reuse GOO's node structure
             using node = GOO::node;
 
+            // Default to upper bound comparison
+            std::unique_ptr<RangeComparer> comparer_ = std::make_unique<LowerBoundComparer>();
+
+            // Optionally set a different comparer
+            void set_comparer(std::unique_ptr<RangeComparer> comparer)
+            {
+                comparer_ = std::move(comparer);
+            }
+
             // Updated for_each_join that uses ranges when available
             template <typename Callback, typename PlanTable>
             void for_each_join(Callback &&callback, PlanTable &PT, const QueryGraph &G, const AdjacencyMatrix &M,
                                const CostFunction &, const CardinalityEstimator &CE, node *begin, node *end) const
             {
-                // Similar to GOO but using ranges
+
+                CardinalityStorage::Get().update_current_table_names(G);
+                CardinalityStorage::Get().extract_all_filters_as_strings(G);
+
                 while (begin + 1 != end)
                 {
-                    // Find best join pair based on ranges
                     node *left = nullptr, *right = nullptr;
-                    double least_upper_bound = std::numeric_limits<double>::infinity();
+                    std::pair<double, double> best_range = {std::numeric_limits<double>::max(),
+                                                            std::numeric_limits<double>::max()};
+                    std::pair<double, double> current_range;
 
-                    // For each potential join pair
                     for (node *outer = begin; outer != end; ++outer)
                     {
                         for (node *inner = std::next(outer); inner != end; ++inner)
                         {
                             if (*outer & *inner)
-                            { // can merge
+                            {
                                 const Subproblem joined = outer->subproblem | inner->subproblem;
-
+                                
                                 // Create model if needed
                                 if (not PT[joined].model)
                                     PT[joined].model = CE.estimate_join(G, *PT[outer->subproblem].model,
-                                                                        *PT[inner->subproblem].model, cnf::CNF{});
-
-                                // Get range or point estimate
-                                double upper_bound;
-                                if (PT[joined].model->has_range())
-                                    upper_bound = PT[joined].model->get_range().second;
-                                else
-                                    upper_bound = CE.predict_cardinality(*PT[joined].model);
-
-                                if (upper_bound < least_upper_bound)
+                                                                    *PT[inner->subproblem].model, cnf::CNF{});
+                                
+                                // Apply stored cardinalities if available
+                                if (CardinalityStorage::Get().has_stored_cardinality(joined))
                                 {
-                                    least_upper_bound = upper_bound;
+                                    double stored_card = CardinalityStorage::Get().get_cardinality();
+                                    PT[joined].model->set_cardinality(stored_card);
+                                }
+                                
+                                if (CardinalityStorage::Get().has_stored_cardinality_range(joined))
+                                {
+                                    auto stored_range = CardinalityStorage::Get().get_cardinality_range();
+                                    PT[joined].model->set_range(stored_range);
+                                }
+                                
+                                // Get current range (either stored or estimated)
+                                std::pair<double, double> current_range;
+                                if (PT[joined].model->has_range())
+                                    current_range = PT[joined].model->get_range();
+                                else {
+                                    double card = CE.predict_cardinality(*PT[joined].model);
+                                    current_range = {card, card};
+                                }
+
+                                if (comparer_->compare(current_range, best_range))
+                                {
+                                    best_range = current_range;
                                     left = outer;
                                     right = inner;
                                 }
@@ -317,7 +368,6 @@ namespace m
                         }
                     }
 
-                    // Process the join as in GOO
                     callback(left->subproblem, right->subproblem);
                     *left += *right;
                     std::swap(*right, *--end);

@@ -2,7 +2,7 @@
 set -e
 
 # === Improve ccache reliability and speed ===
-ccache --set-config sloppiness=time_macros,include_file_ctime,include_file_mtime
+ccache --set-config sloppiness=file_macro,locale,time_macros,include_file_ctime,include_file_mtime
 ccache --set-config compression=true
 ccache --set-config compression_level=6
 echo "Using ccache config:"
@@ -43,4 +43,4 @@ ninja -C "$BUILD_DIR" -v
 
 # Show ccache stats
 echo
-ccache --show-stats
+ccache --show-stats --verbose

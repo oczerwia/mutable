@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <mutable/catalog/CostFunction.hpp>
 #include <mutable/catalog/CardinalityStorage.hpp>
+#include <mutable/catalog/RangeAdjustmentStrategy.hpp>
+#include <mutable/catalog/RangeComparisonStrategy.hpp>
 #include <mutable/IR/PlanTable.hpp>
 #include <mutable/IR/QueryGraph.hpp>
 #include <mutable/mutable-config.hpp>
@@ -265,29 +267,6 @@ namespace m
             void operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const CostFunction &CF) const;
         };
 
-        struct RangeComparer
-        {
-            // Simple interface to compare ranges - returns true if a is better than b
-            virtual bool compare(const std::pair<double, double> &a, const std::pair<double, double> &b) const = 0;
-            virtual ~RangeComparer() = default;
-        };
-
-        // Concrete implementations
-        struct UpperBoundComparer : public RangeComparer
-        {
-            bool compare(const std::pair<double, double> &a, const std::pair<double, double> &b) const override
-            {
-                return a.second < b.second;
-            }
-        };
-
-        struct LowerBoundComparer : public RangeComparer
-        {
-            bool compare(const std::pair<double, double> &a, const std::pair<double, double> &b) const override
-            {
-                return a.first < b.first;
-            }
-        };
 
         /** Range-based greedy operator ordering. */
         struct M_EXPORT RangeGOO : PlanEnumeratorCRTP<RangeGOO>
@@ -299,13 +278,10 @@ namespace m
             using node = GOO::node;
 
             // Default to upper bound comparison
-            std::unique_ptr<RangeComparer> comparer_ = std::make_unique<LowerBoundComparer>();
+            std::unique_ptr<RangeComparer> comparer_ = std::make_unique<MeanUncertaintyComparer>(0.3);
 
-            // Optionally set a different comparer
-            void set_comparer(std::unique_ptr<RangeComparer> comparer)
-            {
-                comparer_ = std::move(comparer);
-            }
+            std::shared_ptr<RangeAdjustmentStrategy> range_adjustment_strategy_ =
+                std::make_shared<TightenBoundsStrategy>(0.4);
 
             // Updated for_each_join that uses ranges when available
             template <typename Callback, typename PlanTable>
@@ -330,30 +306,38 @@ namespace m
                             if (*outer & *inner)
                             {
                                 const Subproblem joined = outer->subproblem | inner->subproblem;
-                                
+
                                 // Create model if needed
                                 if (not PT[joined].model)
                                     PT[joined].model = CE.estimate_join(G, *PT[outer->subproblem].model,
-                                                                    *PT[inner->subproblem].model, cnf::CNF{});
-                                
-                                // Apply stored cardinalities if available
+                                                                        *PT[inner->subproblem].model, cnf::CNF{});
+
                                 if (CardinalityStorage::Get().has_stored_cardinality(joined))
                                 {
                                     double stored_card = CardinalityStorage::Get().get_cardinality();
                                     PT[joined].model->set_cardinality(stored_card);
                                 }
-                                
-                                if (CardinalityStorage::Get().has_stored_cardinality_range(joined))
+
+                                if (CardinalityStorage::Get().has_stored_cardinality_range(joined) &&
+                                    CardinalityStorage::Get().has_stored_cardinality(joined))
+                                {
+                                    auto stored_range = CardinalityStorage::Get().get_cardinality_range();
+                                    double true_card = CardinalityStorage::Get().get_cardinality();
+                                    auto adjusted_range = range_adjustment_strategy_->adjust(stored_range, true_card);
+                                    PT[joined].model->set_range(adjusted_range);
+                                }
+                                else if (CardinalityStorage::Get().has_stored_cardinality_range(joined))
                                 {
                                     auto stored_range = CardinalityStorage::Get().get_cardinality_range();
                                     PT[joined].model->set_range(stored_range);
                                 }
-                                
+
                                 // Get current range (either stored or estimated)
                                 std::pair<double, double> current_range;
                                 if (PT[joined].model->has_range())
                                     current_range = PT[joined].model->get_range();
-                                else {
+                                else
+                                {
                                     double card = CE.predict_cardinality(*PT[joined].model);
                                     current_range = {card, card};
                                 }

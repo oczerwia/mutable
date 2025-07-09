@@ -500,6 +500,8 @@ namespace m
                     }
 
                     new_graph.cardinality_ = cardinality_data->true_cardinality;
+                    if (cardinality_data->estimated_range.first >= 0.0)
+                        new_graph.set_range(cardinality_data->estimated_range);
                     temp_graphs.push_back(new_graph);
                 }
             }
@@ -539,17 +541,17 @@ namespace m
             // Step 3: Update or add to storage
             for (const auto &new_graph : temp_graphs)
             {
-                // Check if this combination already exists
                 bool found_existing = false;
                 for (auto &existing_graph : reduced_query_graphs_)
                 {
                     if (existing_graph.source_names_ == new_graph.source_names_ &&
                         existing_graph.source_filters_ == new_graph.source_filters_)
                     {
-                        // Update existing entry
                         existing_graph.cardinality_ = new_graph.cardinality_;
+                        if (existing_graph.cardinality_range_.first >= 0.0){
+                            existing_graph.cardinality_range_ = new_graph.cardinality_range_;
+                        }
                         found_existing = true;
-
                         if (debug_output_)
                         {
                             std::cout << "  Updated existing ReducedQueryGraph: tables={";
@@ -562,7 +564,14 @@ namespace m
                             {
                                 std::cout << filter << " ";
                             }
-                            std::cout << "}, cardinality=" << existing_graph.cardinality_ << std::endl;
+                            std::cout << "}, cardinality=" << existing_graph.cardinality_;
+                            // Add range output
+                            if (existing_graph.cardinality_range_.first >= 0.0)
+                            {
+                                std::cout << ", range=[" << existing_graph.cardinality_range_.first
+                                        << "-" << existing_graph.cardinality_range_.second << "]";
+                            }
+                            std::cout << std::endl;
                         }
                         break;
                     }
@@ -617,10 +626,8 @@ namespace m
                     if (stored_query.source_names_ == table_names &&
                         stored_query.source_filters_ == current_filters_)
                     {
-                        // Check if this graph has a range
                         if (stored_query.has_range())
                         {
-                            // Store the range for later retrieval
                             cardinality_range_ = stored_query.get_range();
                             return true;
                         }
@@ -631,13 +638,11 @@ namespace m
             return false;
         }
 
-        // NEW: Get the stored range
         std::pair<double, double> get_cardinality_range() const
         {
             return cardinality_range_;
         }
 
-        // NEW: Store a range for a subproblem
         void store_cardinality_range(const std::set<std::string> &tables,
                                      const std::pair<double, double> &range,
                                      double true_cardinality)

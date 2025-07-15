@@ -5,6 +5,7 @@
 #include <mutable/catalog/CardinalityStorage.hpp>
 #include <mutable/catalog/RangeAdjustmentStrategy.hpp>
 #include <mutable/catalog/RangeComparisonStrategy.hpp>
+#include <mutable/catalog/StatisticsStorage.hpp>
 #include <mutable/IR/PlanTable.hpp>
 #include <mutable/IR/QueryGraph.hpp>
 #include <mutable/mutable-config.hpp>
@@ -123,6 +124,7 @@ namespace m
                 CardinalityStorage::Get().extract_all_filters_as_strings(G);
 
                 CardinalityStorage::Get().quick_test_generator();
+                StatisticsStorage::Get().print_all_selectivities();
 
                 while (begin + 1 != end)
                 {
@@ -291,6 +293,12 @@ namespace m
 
                 CardinalityStorage::Get().update_current_table_names(G);
                 CardinalityStorage::Get().extract_all_filters_as_strings(G);
+                // add selectivity retrieval here please
+                const auto& table_names = CardinalityStorage::Get().get_current_table_names();
+                // double sel = m::CardinalityStorage::Get().get_selectivity(table_name, column_name);
+
+                StatisticsStorage::Get().print_all_selectivities();
+                
 
                 while (begin + 1 != end)
                 {

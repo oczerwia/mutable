@@ -8,6 +8,7 @@
 #include <list>
 #include <memory>
 #include <mutable/catalog/CardinalityEstimator.hpp>
+#include <mutable/catalog/TableStatistics.hpp>
 #include <mutable/catalog/Type.hpp>
 #include <mutable/mutable-config.hpp>
 #include <mutable/storage/DataLayout.hpp>
@@ -603,6 +604,11 @@ struct M_EXPORT Table
 
     virtual void dump(std::ostream &out) const = 0;
     virtual void dump() const = 0;
+
+    std::unique_ptr<TableStatistics> statistics_;
+    virtual TableStatistics* statistics() { return nullptr; }
+    virtual const TableStatistics* statistics() const { return nullptr; }
+
 };
 
 /** Basic implementation of `Table`. */
@@ -741,6 +747,16 @@ struct M_EXPORT ConcreteTable : Table
 
     virtual void dump(std::ostream &out) const override;
     virtual void dump() const override;
+
+    std::unique_ptr<TableStatistics> statistics_;
+
+    TableStatistics* statistics() {
+        if (!statistics_) statistics_ = std::make_unique<TableStatistics>();
+        return statistics_.get();
+    }
+    const TableStatistics* statistics() const {
+        return statistics_.get();
+    }
 };
 
 /** Abstract Decorator class that concrete TableDecorator inherit from. */
@@ -809,6 +825,16 @@ struct TableDecorator : Table
 
     virtual void dump(std::ostream & out) const override { table_->dump(out); }
     virtual void dump() const override { table_->dump(); }
+
+    std::unique_ptr<TableStatistics> statistics_;
+
+    TableStatistics* statistics() {
+        if (!statistics_) statistics_ = std::make_unique<TableStatistics>();
+        return statistics_.get();
+    }
+    const TableStatistics* statistics() const {
+        return statistics_.get();
+    }
 };
 
 /** A multi-versioning table is a `Table` with additional invisible timestamp attributes. */

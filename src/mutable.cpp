@@ -15,11 +15,12 @@
 #include <mutable/Options.hpp>
 #include <mutable/util/Diagnostic.hpp>
 #include <mutable/catalog/CardinalityStorage.hpp>
-
+#include <mutable/catalog/TableStatistics.hpp>
+#include <mutable/catalog/StatisticsStorage.hpp>
+#include <unordered_set>
 
 using namespace m;
 using namespace m::ast;
-
 
 bool m::init() { return streq(m::version::GIT_REV, m::version::get().GIT_REV); }
 
@@ -73,22 +74,35 @@ void m::process_stream(std::istream &in, const char *filename, Diagnostic diag)
     ast::Lexer lexer(diag, C.get_pool(), filename, in);
     ast::Parser parser(lexer);
 
-    while (parser.token()) {
+    while (parser.token())
+    {
         bool err = false;
         diag.clear();
         Timer &timer = C.timer();
         auto ast = parser.parse();
         C.scheduler().autocommit(std::move(ast), diag);
 
-        if (Options::Get().times) {
+        if (Options::Get().times)
+        {
             using namespace std::chrono;
-            for (const auto &M : timer) {
+            for (const auto &M : timer)
+            {
                 if (M.is_finished())
                     std::cout << M.name << ": " << duration_cast<microseconds>(M.duration()).count() / 1e3 << '\n';
             }
             std::cout.flush();
             timer.clear();
         }
+        if (C.has_database_in_use()) {
+        auto& db = C.get_database_in_use();
+        for (auto it = db.begin_tables(); it != db.end_tables(); ++it) {
+            auto& table = *it->second;
+            if (auto* stats = table.statistics()) {
+                stats->compute(table);
+                m::StatisticsStorage::Get().set_statistics(std::string(*table.name()), std::make_unique<TableStatistics>(*stats));
+            }
+        }
+    }
     }
 
     std::cout.flush();
@@ -116,51 +130,66 @@ void m::execute_statement(Diagnostic &diag, const ast::Stmt &stmt, const bool is
     Catalog &C = Catalog::Get();
     auto timer = C.timer();
 
-    if (is<const ast::SelectStmt>(stmt)) {
+    if (is<const ast::SelectStmt>(stmt))
+    {
         auto query_graph = M_TIME_EXPR(QueryGraph::Build(stmt), "Construct the query graph", timer);
-        if (Options::Get().graph) query_graph->dump(std::cout);
-        if (Options::Get().graphdot) {
+        if (Options::Get().graph)
+            query_graph->dump(std::cout);
+        if (Options::Get().graphdot)
+        {
             DotTool dot(diag);
             query_graph->dot(dot.stream());
             dot.show("graph", is_stdin, "fdp");
         }
-        if (Options::Get().graph2sql) {
+        if (Options::Get().graph2sql)
+        {
             query_graph->sql(std::cout);
             std::cout.flush();
         }
         Optimizer Opt(C.plan_enumerator(), C.cost_function());
         std::unique_ptr<Producer> optree;
-        if (Options::Get().output_partial_plans_file) {
+        if (Options::Get().output_partial_plans_file)
+        {
             auto res = M_TIME_EXPR(
                 Opt.optimize_with_plantable<PlanTableLargeAndSparse>(*query_graph),
                 "Compute the logical query plan",
-                timer
-            );
+                timer);
             std::cout << "Output option was traversed" << std::endl;
             optree = std::move(res.first);
             std::filesystem::path JSON_path(Options::Get().output_partial_plans_file);
             errno = 0;
             std::ofstream JSON_file(JSON_path);
-            if (not JSON_file or errno) {
+            if (not JSON_file or errno)
+            {
                 const auto errsv = errno;
-                if (errsv) {
+                if (errsv)
+                {
                     diag.err() << "Failed to open output file for partial plans " << JSON_path << ": "
                                << strerror(errsv) << std::endl;
-                } else {
+                }
+                else
+                {
                     diag.err() << "Failed to open output file for partial plans " << JSON_path << std::endl;
                 }
-            } else {
-                auto for_each = [&res](PartialPlanGenerator::callback_type callback) {
+            }
+            else
+            {
+                auto for_each = [&res](PartialPlanGenerator::callback_type callback)
+                {
                     PartialPlanGenerator{}.for_each_complete_partial_plan(res.second, callback);
                 };
                 PartialPlanGenerator{}.write_partial_plans_JSON(JSON_file, *query_graph, res.second, for_each);
             }
-        } else {
+        }
+        else
+        {
             optree = M_TIME_EXPR(Opt(*query_graph), "Compute the logical query plan", timer);
         }
         M_insist(bool(optree), "optree must have been computed");
-        if (Options::Get().plan) optree->dump(std::cout);
-        if (Options::Get().plandot) {
+        if (Options::Get().plan)
+            optree->dump(std::cout);
+        if (Options::Get().plandot)
+        {
             DotTool dot(diag);
             optree->dot(dot.stream());
             dot.show("logical_plan", is_stdin);
@@ -187,11 +216,12 @@ void m::execute_statement(Diagnostic &diag, const ast::Stmt &stmt, const bool is
 
         if (not Options::Get().dryrun)
             M_TIME_EXPR(backend->execute(*physical_plan), "Execute query", timer);
-            // STORE CARDINALITIES
-            CardinalityStorage::Get().map_true_cardinalities_to_logical_plan_(physical_plan->get_matched_root());
-            CardinalityStorage::Get().extract_reduced_query_graphs_from_execution(physical_plan->get_matched_root());
-
-    } else if (auto I = cast<const ast::InsertStmt>(&stmt)) {
+        // STORE CARDINALITIES
+        CardinalityStorage::Get().map_true_cardinalities_to_logical_plan_(physical_plan->get_matched_root());
+        CardinalityStorage::Get().extract_reduced_query_graphs_from_execution(physical_plan->get_matched_root());
+    }
+    else if (auto I = cast<const ast::InsertStmt>(&stmt))
+    {
         auto &DB = C.get_database_in_use();
         auto &T = DB.get_table(I->table_name.text.assert_not_none());
         auto &store = T.store();
@@ -200,106 +230,151 @@ void m::execute_statement(Diagnostic &diag, const ast::Stmt &stmt, const bool is
         Tuple tup(S);
 
         /* Write all tuples to the store. */
-        for (auto &t : I->tuples) {
+        for (auto &t : I->tuples)
+        {
             StackMachine get_tuple(Schema{});
-            for (std::size_t i = 0; i != t.size(); ++i) {
+            for (std::size_t i = 0; i != t.size(); ++i)
+            {
                 auto &v = t[i];
-                switch (v.first) {
-                    case ast::InsertStmt::I_Null:
-                        get_tuple.emit_St_Tup_Null(0, i);
-                        break;
+                switch (v.first)
+                {
+                case ast::InsertStmt::I_Null:
+                    get_tuple.emit_St_Tup_Null(0, i);
+                    break;
 
-                    case ast::InsertStmt::I_Default:
-                        /* nothing to be done, Tuples are initialized to default values */
-                        break;
+                case ast::InsertStmt::I_Default:
+                    /* nothing to be done, Tuples are initialized to default values */
+                    break;
 
-                    case ast::InsertStmt::I_Expr:
-                        get_tuple.emit(*v.second);
-                        get_tuple.emit_Cast(S[i].type, v.second->type());
-                        get_tuple.emit_St_Tup(0, i, S[i].type);
-                        break;
+                case ast::InsertStmt::I_Expr:
+                    get_tuple.emit(*v.second);
+                    get_tuple.emit_Cast(S[i].type, v.second->type());
+                    get_tuple.emit_St_Tup(0, i, S[i].type);
+                    break;
                 }
             }
-            Tuple *args[] = { &tup };
+            Tuple *args[] = {&tup};
             get_tuple(args);
             W.append(tup);
         }
-    } else if (auto S = cast<const ast::CreateDatabaseStmt>(&stmt)) {
+    }
+    else if (auto S = cast<const ast::CreateDatabaseStmt>(&stmt))
+    {
         C.add_database(S->database_name.text.assert_not_none());
-    } else if (auto S = cast<const ast::DropDatabaseStmt>(&stmt)) {
+    }
+    else if (auto S = cast<const ast::DropDatabaseStmt>(&stmt))
+    {
         M_unreachable("not implemented");
-    } else if (auto S = cast<const ast::UseDatabaseStmt>(&stmt)) {
+    }
+    else if (auto S = cast<const ast::UseDatabaseStmt>(&stmt))
+    {
         auto &DB = C.get_database(S->database_name.text.assert_not_none());
         C.set_database_in_use(DB);
-    } else if (auto S = cast<const ast::CreateTableStmt>(&stmt)) {
+    }
+    else if (auto S = cast<const ast::CreateTableStmt>(&stmt))
+    {
         auto &DB = C.get_database_in_use();
         auto &T = DB.add_table(S->table_name.text.assert_not_none());
 
-        for (auto &attr : S->attributes) {
+        for (auto &attr : S->attributes)
+        {
             const PrimitiveType *ty = cast<const PrimitiveType>(attr->type);
             auto attribute_name = attr->name.text.assert_not_none();
 
             T.push_back(attribute_name, ty->as_vectorial());
-            for (auto &c : attr->constraints) {
-                visit(overloaded {
-                    [&](const PrimaryKeyConstraint&) {
-                        T.add_primary_key(attribute_name);
-                    },
-                    [&](const UniqueConstraint&) {
-                        T.at(attribute_name).unique = true;
-                    },
-                    [&](const NotNullConstraint&) {
-                        T.at(attribute_name).not_nullable = true;
-                    },
-                    [&](const ReferenceConstraint &ref) {
-                        auto &ref_table = DB.get_table(ref.table_name.text.assert_not_none());
-                        auto &ref_attr = ref_table.at(ref.attr_name.text.assert_not_none());
-                        T.at(attribute_name).reference = &ref_attr;
-                    },
-                    [](auto&&) { M_unreachable("constraint not implemented"); },
-                }, *c, tag<ConstASTConstraintVisitor>{});
+            for (auto &c : attr->constraints)
+            {
+                visit(overloaded{
+                          [&](const PrimaryKeyConstraint &)
+                          {
+                              T.add_primary_key(attribute_name);
+                          },
+                          [&](const UniqueConstraint &)
+                          {
+                              T.at(attribute_name).unique = true;
+                          },
+                          [&](const NotNullConstraint &)
+                          {
+                              T.at(attribute_name).not_nullable = true;
+                          },
+                          [&](const ReferenceConstraint &ref)
+                          {
+                              auto &ref_table = DB.get_table(ref.table_name.text.assert_not_none());
+                              auto &ref_attr = ref_table.at(ref.attr_name.text.assert_not_none());
+                              T.at(attribute_name).reference = &ref_attr;
+                          },
+                          [](auto &&)
+                          { M_unreachable("constraint not implemented"); },
+                      },
+                      *c, tag<ConstASTConstraintVisitor>{});
             }
         }
 
         T.layout(C.data_layout());
         T.store(C.create_store(T));
-    } else if (auto S = cast<const ast::DropTableStmt>(&stmt)) {
+    }
+    else if (auto S = cast<const ast::DropTableStmt>(&stmt))
+    {
         M_unreachable("not implemented");
-    } else if (auto S = cast<const ast::DSVImportStmt>(&stmt)) {
+    }
+    else if (auto S = cast<const ast::DSVImportStmt>(&stmt))
+    {
         auto &DB = C.get_database_in_use();
         auto &T = DB.get_table(S->table_name.text.assert_not_none());
 
         DSVReader::Config cfg;
-        if (S->rows) cfg.num_rows = strtol(*S->rows.text, nullptr, 10);
-        if (S->delimiter) cfg.delimiter = unescape(*S->delimiter.text)[1];
-        if (S->escape) cfg.escape = unescape(*S->escape.text)[1];
-        if (S->quote) cfg.quote = unescape(*S->quote.text)[1];
+        if (S->rows)
+            cfg.num_rows = strtol(*S->rows.text, nullptr, 10);
+        if (S->delimiter)
+            cfg.delimiter = unescape(*S->delimiter.text)[1];
+        if (S->escape)
+            cfg.escape = unescape(*S->escape.text)[1];
+        if (S->quote)
+            cfg.quote = unescape(*S->quote.text)[1];
         cfg.has_header = S->has_header;
         cfg.skip_header = S->skip_header;
 
-        try {
+
+        std::cout << "\n\n\n\n\n\n\n\n\nWARNING: load_from_DSV called\n\n\n\n\n\n\n\n\n" << std::endl;
+
+
+        try
+        {
             DSVReader R(T, std::move(cfg), diag);
 
             std::string filename(*S->path.text, 1, strlen(*S->path.text) - 2);
             errno = 0;
             std::ifstream file(filename);
-            if (not file) {
+            if (not file)
+            {
                 const auto errsv = errno;
                 diag.e(S->path.pos) << "Could not open file '" << S->path.text << '\'';
                 if (errsv)
                     diag.err() << ": " << strerror(errsv);
                 diag.err() << std::endl;
-            } else {
-                M_TIME_EXPR(R(file, *S->path.text), "Read DSV file", timer);
             }
-        } catch (m::invalid_argument e) {
+            else
+            {
+                M_TIME_EXPR(R(file, *S->path.text), "Read DSV file", timer);
+                if (auto *stats = T.statistics()) {
+                    stats->compute(T);
+                    for (const auto& [col, sel] : stats->selectivity) {
+                        std::cout << "Selectivity for column '" << *col << "': " << sel << "\n";
+                    }
+                }
+            }
+        }
+        catch (m::invalid_argument e)
+        {
             diag.err() << "Error reading DSV file: " << e.what() << "\n";
         }
     }
 
-    if (Options::Get().times) {
+    if (Options::Get().times)
+    {
         using namespace std::chrono;
-        for (const auto &M : timer) {
+        for (const auto &M : timer)
+        {
             if (M.is_finished())
                 std::cout << M.name << ": " << duration_cast<microseconds>(M.duration()).count() / 1e3 << '\n';
         }
@@ -316,15 +391,20 @@ void m::execute_instruction(Diagnostic &diag, const Instruction &instruction)
     diag.clear();
     Catalog &C = Catalog::Get();
 
-    try {
+    try
+    {
+        std::cout << "\n\n\n\n\n\n\n\n\nWARNING:execute_instruction() called \n\n\n\n\n\n\n\n\n" << std::endl;
+
         auto I = C.create_instruction(instruction.name, instruction.args);
         I->execute(diag);
-    } catch (const std::exception &e) {
+    }
+    catch (const std::exception &e)
+    {
         diag.e(instruction.tok.pos) << "Instruction " << instruction.name << " does not exist.\n";
     }
 }
 
-std::unique_ptr<Consumer> m::logical_plan_from_statement(Diagnostic&, const SelectStmt &stmt,
+std::unique_ptr<Consumer> m::logical_plan_from_statement(Diagnostic &, const SelectStmt &stmt,
                                                          std::unique_ptr<Consumer> consumer)
 {
     Catalog &C = Catalog::Get();
@@ -347,7 +427,7 @@ std::unique_ptr<MatchBase> m::physical_plan_from_logical_plan(Diagnostic &diag, 
     return physical_plan_from_logical_plan(diag, logical_plan, *backend);
 }
 
-std::unique_ptr<MatchBase> m::physical_plan_from_logical_plan(Diagnostic&, const Consumer &logical_plan,
+std::unique_ptr<MatchBase> m::physical_plan_from_logical_plan(Diagnostic &, const Consumer &logical_plan,
                                                               const Backend &backend)
 {
     PhysicalOptimizerImpl<ConcretePhysicalPlanTable> PhysOpt;
@@ -365,7 +445,7 @@ void m::execute_physical_plan(Diagnostic &diag, const MatchBase &physical_plan)
     execute_physical_plan(diag, physical_plan, *backend);
 }
 
-void m::execute_physical_plan(Diagnostic&, const MatchBase &physical_plan, const Backend &backend)
+void m::execute_physical_plan(Diagnostic &, const MatchBase &physical_plan, const Backend &backend)
 {
     M_TIME_EXPR(backend.execute(physical_plan), "Execute query", Catalog::Get().timer());
 }
@@ -397,19 +477,31 @@ void m::load_from_CSV(Diagnostic &diag, Table &table, const std::filesystem::pat
     cfg.skip_header = skip_header;
     DSVReader R(table, std::move(cfg), diag);
 
+    std::cout << "\n\n\n\n\n\n\n\n\nWARNING: load_from_CSV called\n\n\n\n\n\n\n\n\n" << std::endl;
+
     errno = 0;
     std::ifstream file(path);
-    if (not file) {
+    if (not file)
+    {
         diag.e(Position(path.c_str())) << "Could not open file '" << path << '\'';
         if (errno)
             diag.err() << ": " << strerror(errno);
         diag.err() << std::endl;
-    } else {
+    }
+    else
+    {
         R(file, path.c_str()); // read the file
     }
 
     if (diag.num_errors() != 0)
         throw runtime_error("error while reading CSV file");
+
+    if (auto *stats = table.statistics()) {
+        stats->compute(table);
+    }
+    for (const auto& [col, sel] : table.statistics()->selectivity) {
+        std::cout << "Selectivity for column '" << col << "': " << sel << "\n";
+    }
 }
 
 void m::execute_file(Diagnostic &diag, const std::filesystem::path &path)
@@ -419,7 +511,8 @@ void m::execute_file(Diagnostic &diag, const std::filesystem::path &path)
 
     errno = 0;
     std::ifstream in(path);
-    if (not in) {
+    if (not in)
+    {
         auto errsv = errno;
         std::cerr << "Could not open '" << path << "'";
         if (errno)
@@ -432,33 +525,40 @@ void m::execute_file(Diagnostic &diag, const std::filesystem::path &path)
     Parser parser(lexer);
     Sema sema(diag);
 
-    while (parser.token()) {
+    while (parser.token())
+    {
         std::unique_ptr<Command> command(parser.parse());
-        if (diag.num_errors()) return;
-        if (auto inst = cast<Instruction>(command)) {
+        if (diag.num_errors())
+            return;
+        if (auto inst = cast<Instruction>(command))
+        {
             execute_instruction(diag, *inst);
-        } else {
+        }
+        else
+        {
             auto stmt = as<Stmt>(std::move(command));
             sema(*stmt);
-            if (diag.num_errors()) return;
+            if (diag.num_errors())
+                return;
             execute_statement(diag, *stmt);
         }
     }
 }
 
-m::StoreWriter::StoreWriter(Store &store) : store_(store), S(store.table().schema()) { }
+m::StoreWriter::StoreWriter(Store &store) : store_(store), S(store.table().schema()) {}
 
-m::StoreWriter::~StoreWriter() { }
+m::StoreWriter::~StoreWriter() {}
 
 void m::StoreWriter::append(const Tuple &tup) const
 {
     store_.append();
-    if (layout_ != &store_.table().layout()) {
+    if (layout_ != &store_.table().layout())
+    {
         layout_ = &store_.table().layout();
         writer_ = std::make_unique<m::StackMachine>(m::Interpreter::compile_store(S, store_.memory().addr(), *layout_,
                                                                                   S, store_.num_rows() - 1));
     }
 
-    Tuple *args[] = { const_cast<Tuple*>(&tup) };
+    Tuple *args[] = {const_cast<Tuple *>(&tup)};
     (*writer_)(args);
 }

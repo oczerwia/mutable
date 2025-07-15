@@ -26,7 +26,8 @@
                 "--cardinality-estimator",
                 "RangeCartesianProduct",
                 "--backend",
-                "Interpreter"
+                "Interpreter",
+                "zzz_micro_query.sql"
             ],
             "cwd": "${workspaceFolder}",
             "terminal": "integrated"

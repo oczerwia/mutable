@@ -81,6 +81,11 @@
         "scoped_allocator": "cpp",
         "alignedvector3": "cpp",
         "*.inc": "cpp",
-        "format": "cpp"
+        "format": "cpp",
+        "mprealsupport": "cpp",
+        "thread": "cpp",
+        "*.tpp": "cpp",
+        "atomic": "cpp",
+        "*.tbl": "cpp"
     }
 }

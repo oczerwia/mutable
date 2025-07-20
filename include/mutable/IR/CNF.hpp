@@ -6,6 +6,11 @@
 #include <mutable/parse/AST.hpp>
 #include <vector>
 
+// This is for the extract join columns function
+#include <map>
+#include <set>
+#include <string>
+
 
 namespace m {
 
@@ -176,6 +181,59 @@ struct M_EXPORT CNF : public std::vector<Clause>
 
     void dump(std::ostream &out) const;
     void dump() const;
+
+
+    std::map<std::string, std::set<std::string>> get_join_columns() const {
+        std::map<std::string, std::set<std::string>> result;
+        for (const auto& clause : *this) {
+            for (const auto& pred : clause) {
+                if (auto bin = cast<const ast::BinaryExpr>(&pred.expr())) {
+                    if (bin->op().type == m::TK_EQUAL) {
+                        auto lhs = cast<const ast::Designator>(bin->lhs.get());
+                        auto rhs = cast<const ast::Designator>(bin->rhs.get());
+                        if (lhs && rhs) {
+                            auto lhs_table_name = std::string(*lhs->table_name.text);
+                            auto lhs_column_name = std::string(*lhs->attr_name.text);
+                            
+                            auto rhs_table_name = std::string(*rhs->table_name.text);
+                            auto rhs_column_name = std::string(*rhs->attr_name.text);
+                            
+                            result[lhs_table_name].insert(lhs_column_name);
+                            result[rhs_table_name].insert(rhs_column_name);
+                        }
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    std::map<std::string, std::set<std::string>> get_filter_columns() const {
+        std::map<std::string, std::set<std::string>> result;
+        for (const auto& clause : *this) {
+            for (const auto& pred : clause) {
+                if (auto bin = cast<const ast::BinaryExpr>(&pred.expr())) {
+                    // Extract left side as designator (e.g., table.column)
+                    auto lhs = cast<const ast::Designator>(bin->lhs.get());
+                    if (lhs && lhs->has_table_name()) {
+                        auto table_name = std::string(*lhs->table_name.text);
+                        auto column_name = std::string(*lhs->attr_name.text);
+                        result[table_name].insert(column_name);
+                    }
+                    
+                    // Also check right side in case filter condition has column on right
+                    auto rhs = cast<const ast::Designator>(bin->rhs.get());
+                    if (rhs && rhs->has_table_name()) {
+                        auto table_name = std::string(*rhs->table_name.text);
+                        auto column_name = std::string(*rhs->attr_name.text);
+                        result[table_name].insert(column_name);
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
 };
 
 /** Returns the **logical or** of two `cnf::Clause`s, i.e.\ the disjunction of the `Predicate`s of `lhs` and `rhs`.

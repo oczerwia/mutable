@@ -19,7 +19,7 @@ export CC="${LLVM_PATH}/bin/clang"
 export CXX="${LLVM_PATH}/bin/clang++"
 
 # Create build dir
-mkdir -p "$BUILD_DIR"
+# mkdir -p "$BUILD_DIR"
 
 # Run CMake config
 cmake -S . -B "$BUILD_DIR" \

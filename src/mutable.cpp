@@ -16,7 +16,6 @@
 #include <mutable/util/Diagnostic.hpp>
 #include <mutable/catalog/CardinalityStorage.hpp>
 #include <mutable/catalog/TableStatistics.hpp>
-#include <mutable/catalog/StatisticsStorage.hpp>
 #include <unordered_set>
 
 using namespace m;
@@ -98,13 +97,11 @@ void m::process_stream(std::istream &in, const char *filename, Diagnostic diag)
         for (auto it = db.begin_tables(); it != db.end_tables(); ++it) {
             auto& table = *it->second;
             if (auto* stats = table.statistics()) {
-                stats->compute(table);
-                m::StatisticsStorage::Get().set_statistics(std::string(*table.name()), std::make_unique<TableStatistics>(*stats));
+                stats->compute(table);            
             }
         }
     }
-    }
-
+    
     std::cout.flush();
     std::cerr.flush();
 }
@@ -356,12 +353,17 @@ void m::execute_statement(Diagnostic &diag, const ast::Stmt &stmt, const bool is
             else
             {
                 M_TIME_EXPR(R(file, *S->path.text), "Read DSV file", timer);
-                if (auto *stats = T.statistics()) {
-                    stats->compute(T);
-                    for (const auto& [col, sel] : stats->selectivity) {
-                        std::cout << "Selectivity for column '" << *col << "': " << sel << "\n";
-                    }
+                auto *stats = T.statistics();
+                stats->compute(T);
+                std::cout << "Statistics computed in mutable.cpp. Found " << stats->selectivity.size() << " columns." << std::endl;
+                for (const auto& [col, sel] : stats->selectivity) {
+                    std::cout << "Selectivity for column '" << col << "': " << sel << "\n";
                 }
+                for (const auto& [col, hist] : stats->histograms) {
+                    std::cout << "Histogram for column '" << col << "': " << hist.bins.size() << " bins, ";
+                    std::cout << "range [" << hist.min << ", " << hist.max << "]\n";
+                }
+                
             }
         }
         catch (m::invalid_argument e)

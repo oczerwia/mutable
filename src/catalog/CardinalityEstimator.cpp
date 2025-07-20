@@ -38,6 +38,13 @@ namespace
 
 DataModel::~DataModel() {}
 
+std::pair<double, double> DataModel::get_range() const {
+    if (!has_range()) {
+            return {size, size};
+        }
+        return range;
+}
+
 CardinalityEstimator::~CardinalityEstimator() {}
 
 double CardinalityEstimator::predict_number_distinct_values(const DataModel &) const
@@ -149,6 +156,111 @@ void CartesianProductEstimator::print(std::ostream &out) const
 M_LCOV_EXCL_STOP
 
 /*======================================================================================================================
+ * ExperimentalEstimator
+ *====================================================================================================================*/
+
+std::unique_ptr<DataModel> ExperimentalEstimator::empty_model() const
+{
+    auto model = std::make_unique<ExperimentalDataModel>();
+    model->size = 0;
+    return model;
+}
+
+std::unique_ptr<DataModel> ExperimentalEstimator::estimate_scan(const QueryGraph &G, Subproblem P) const
+{
+    M_insist(P.size() == 1, "Subproblem must identify exactly one DataSource");
+    auto idx = *P.begin();
+    auto &BT = as<const BaseTable>(*G.sources()[idx]);
+    auto model = std::make_unique<ExperimentalDataModel>();
+    model->size = BT.table().store().num_rows();
+
+
+    
+    if (auto stats_ptr = BT.table().statistics()) {
+        model->set_stats(*stats_ptr);
+    }
+
+    auto test = model->get_stats();
+
+    return model;
+}
+
+std::unique_ptr<DataModel>
+ExperimentalEstimator::estimate_filter(const QueryGraph &, const DataModel &_data, const cnf::CNF &) const
+{
+    /* This model cannot estimate the effects of applying a filter. */
+    auto &data = as<const ExperimentalDataModel>(_data);
+    return std::make_unique<ExperimentalDataModel>(data); // copy
+}
+
+std::unique_ptr<DataModel>
+ExperimentalEstimator::estimate_limit(const QueryGraph &, const DataModel &_data, std::size_t limit,
+                                      std::size_t offset) const
+{
+    auto data = as<const ExperimentalDataModel>(_data);
+    const std::size_t remaining = offset > data.size ? 0UL : data.size - offset;
+    auto model = std::make_unique<ExperimentalDataModel>();
+    model->size = std::min(remaining, limit);
+    return model;
+}
+
+std::unique_ptr<DataModel>
+ExperimentalEstimator::estimate_grouping(const QueryGraph &, const DataModel &_data,
+                                         const std::vector<group_type> &) const
+{
+    auto &data = as<const ExperimentalDataModel>(_data);
+    auto model = std::make_unique<ExperimentalDataModel>();
+    model->size = data.size; // this model cannot estimate the effects of grouping
+    return model;
+}
+
+std::unique_ptr<DataModel>
+ExperimentalEstimator::estimate_join(const QueryGraph &, const DataModel &_left, const DataModel &_right,
+                                     const cnf::CNF &) const
+{
+    auto left = as<const ExperimentalDataModel>(_left);
+    auto right = as<const ExperimentalDataModel>(_right);
+    auto model = std::make_unique<ExperimentalDataModel>();
+    model->size = left.size * right.size; // this model cannot estimate the effects of a join condition
+
+    model->get_range();
+
+    return model;
+}
+
+template <typename PlanTable>
+std::unique_ptr<DataModel>
+ExperimentalEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph &, Subproblem to_join,
+                                  const cnf::CNF &) const
+{
+    M_insist(not to_join.empty());
+    auto model = std::make_unique<ExperimentalDataModel>();
+    model->size = 1UL;
+    for (auto it = to_join.begin(); it != to_join.end(); ++it)
+        model->size *= as<const ExperimentalDataModel>(*PT[it.as_set()].model).size;
+    return model;
+}
+
+template std::unique_ptr<DataModel>
+ExperimentalEstimator::operator()(estimate_join_all_tag, const PlanTableSmallOrDense &, const QueryGraph &,
+                                  Subproblem, const cnf::CNF &) const;
+template std::unique_ptr<DataModel>
+ExperimentalEstimator::operator()(estimate_join_all_tag, const PlanTableLargeAndSparse &, const QueryGraph &,
+                                  Subproblem, const cnf::CNF &) const;
+
+std::size_t ExperimentalEstimator::predict_cardinality(const DataModel &data) const
+{
+    return as<const ExperimentalDataModel>(data).size;
+}
+
+M_LCOV_EXCL_START
+void ExperimentalEstimator::print(std::ostream &out) const
+{
+    out << "SelectivityEstimator - returns size based on the selectivity of the given subproblems";
+}
+M_LCOV_EXCL_STOP
+
+/*======================================================================================================================
  * RangeCartesianProductEstimator
  *====================================================================================================================*/
 
@@ -186,7 +298,7 @@ RangeCartesianProductEstimator::estimate_filter(const QueryGraph &G, const DataM
         return result;
     }
 
-    // TODO: Need to update later when changing from cartesian product to selectivity based!
+    // TODO: Change this to some naive min max range estimation or just return the full result
     auto range = model.has_range() ? model.get_range() : std::make_pair(double(model.size), double(model.size));
 
     // Simple filter model: reduce by 30-70% (add range uncertainty)
@@ -279,8 +391,7 @@ RangeCartesianProductEstimator::estimate_join(const QueryGraph &G, const DataMod
     }
     else
     {
-        // Join with selectivity bounds
-        // For joins with conditions, introduce range uncertainty
+        // TODO: Need to remove this first
         double low_selectivity = 0.001; // Highly selective join possible (0.1%)
         double high_selectivity = 0.1;  // Less selective join possible (10%)
 
@@ -1075,7 +1186,8 @@ void SpnEstimator::print(std::ostream &) const {}
 #define LIST_CE(X)                                                                                   \
     X(CartesianProductEstimator, "CartesianProduct", "estimates cardinalities as Cartesian product") \
     X(InjectionCardinalityEstimator, "Injected", "estimates cardinalities based on a JSON file")     \
-    X(SpnEstimator, "Spn", "estimates cardinalities based on Sum-Product Networks")                 \
+    X(SpnEstimator, "Spn", "estimates cardinalities based on Sum-Product Networks")                  \
+    X(ExperimentalEstimator, "Experimental", "Used to test new estimation" )                         \
     X(RangeCartesianProductEstimator, "RangeCartesianProduct", "range-aware cardinality estimator")
 
 #define INSTANTIATE(TYPE, _1, _2)                                                                             \

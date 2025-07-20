@@ -9,6 +9,9 @@
 #include <sstream>
 #include <unordered_map>
 #include <vector>
+#include <map>
+#include <string>
+#include <mutable/catalog/TableStatistics.hpp>
 
 namespace m
 {
@@ -48,20 +51,27 @@ namespace m
     virtual void assign_to(Subproblem s) = 0;
     virtual void set_cardinality(double cardinality) = 0;
 
-    // NEW: Simple range storage - just these three functions
+    std::size_t size = 0;
     std::pair<double, double> range = {-1.0, -1.0}; // -1 indicates unset
+    TableStatistics stats;
     
     bool has_range() const { 
         return range.first >= 0.0; // Range exists if set to valid values
     }
     
-    std::pair<double, double> get_range() const { 
-        return range;
-    }
+    std::pair<double, double> get_range() const;
     
     void set_range(std::pair<double, double> new_range) { 
         range = new_range;
         set_cardinality(new_range.second); // Update cardinality with upper bound
+    }
+
+    void set_stats(const TableStatistics& table_stats) {
+        stats = table_stats;
+    }
+    
+    const TableStatistics& get_stats() const {
+        return stats;
     }
 };
 
@@ -207,6 +217,60 @@ namespace m
 
         CartesianProductEstimator() {}
         CartesianProductEstimator(ThreadSafePooledString) {}
+
+        /*==================================================================================================================
+         * Model calculation
+         *================================================================================================================*/
+
+        std::unique_ptr<DataModel> empty_model() const override;
+        std::unique_ptr<DataModel> estimate_scan(const QueryGraph &G, Subproblem P) const override;
+        std::unique_ptr<DataModel>
+        estimate_filter(const QueryGraph &G, const DataModel &data, const cnf::CNF &filter) const override;
+        std::unique_ptr<DataModel>
+        estimate_limit(const QueryGraph &G, const DataModel &data, std::size_t limit, std::size_t offset) const override;
+        std::unique_ptr<DataModel>
+        estimate_grouping(const QueryGraph &G, const DataModel &data, const std::vector<group_type> &groups) const override;
+        std::unique_ptr<DataModel>
+        estimate_join(const QueryGraph &G, const DataModel &left, const DataModel &right,
+                      const cnf::CNF &condition) const override;
+
+        template <typename PlanTable>
+        std::unique_ptr<DataModel>
+        operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph &G, Subproblem to_join,
+                   const cnf::CNF &condition) const;
+
+        /*==================================================================================================================
+         * Prediction via model use
+         *================================================================================================================*/
+
+        std::size_t predict_cardinality(const DataModel &data) const override;
+
+    private:
+        void print(std::ostream &out) const override;
+    };
+
+    /**
+     * Experimentalestimator - WIP (Used to see what needs to be propagated across the whole way)
+     */
+    struct M_EXPORT ExperimentalEstimator : CardinalityEstimatorCRTP<ExperimentalEstimator>
+    {
+        struct ExperimentalDataModel : DataModel
+        {
+            std::size_t size;
+
+
+            ExperimentalDataModel() = default;
+            ExperimentalDataModel(std::size_t size) : size(size) {}
+
+            void assign_to(Subproblem) override { /* nothing to be done */ }
+            void set_cardinality(double cardinality) override
+            {
+                size = cardinality;
+            }
+        };
+
+        ExperimentalEstimator() {}
+        ExperimentalEstimator(ThreadSafePooledString) {}
 
         /*==================================================================================================================
          * Model calculation

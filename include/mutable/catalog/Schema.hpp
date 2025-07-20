@@ -605,9 +605,9 @@ struct M_EXPORT Table
     virtual void dump(std::ostream &out) const = 0;
     virtual void dump() const = 0;
 
-    std::unique_ptr<TableStatistics> statistics_;
-    virtual TableStatistics* statistics() { return nullptr; }
-    virtual const TableStatistics* statistics() const { return nullptr; }
+    // std::unique_ptr<TableStatistics> statistics_;
+    virtual TableStatistics* statistics() = 0;
+    virtual const TableStatistics* statistics() const = 0;
 
 };
 
@@ -748,13 +748,12 @@ struct M_EXPORT ConcreteTable : Table
     virtual void dump(std::ostream &out) const override;
     virtual void dump() const override;
 
-    std::unique_ptr<TableStatistics> statistics_;
+    std::unique_ptr<TableStatistics> statistics_ = std::make_unique<TableStatistics>();
 
-    TableStatistics* statistics() {
-        if (!statistics_) statistics_ = std::make_unique<TableStatistics>();
+    TableStatistics* statistics() override {
         return statistics_.get();
     }
-    const TableStatistics* statistics() const {
+    const TableStatistics* statistics() const override {
         return statistics_.get();
     }
 };
@@ -826,14 +825,12 @@ struct TableDecorator : Table
     virtual void dump(std::ostream & out) const override { table_->dump(out); }
     virtual void dump() const override { table_->dump(); }
 
-    std::unique_ptr<TableStatistics> statistics_;
 
-    TableStatistics* statistics() {
-        if (!statistics_) statistics_ = std::make_unique<TableStatistics>();
-        return statistics_.get();
+    TableStatistics* statistics() override{
+        return table_->statistics();
     }
-    const TableStatistics* statistics() const {
-        return statistics_.get();
+    const TableStatistics* statistics() const override {
+        return table_->statistics();
     }
 };
 

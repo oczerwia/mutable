@@ -7,7 +7,7 @@
 #include <cstddef>
 #include <limits>
 #include <algorithm>
-#include <mutable/util/Pool.hpp>
+#include <set>
 
 namespace m
 {
@@ -16,69 +16,99 @@ namespace m
 
     struct ColumnHistogram
     {
-        // Simple equi-width histogram for numeric columns
+        // Equi-width histogram for numeric columns ONLY
         std::vector<std::size_t> bins;
         double min = 0.0;
         double max = 0.0;
         std::size_t num_distinct = 0;
         std::size_t null_count = 0;
+        std::size_t total_count = 0;
+
+        static const std::size_t DEFAULT_NUM_BINS = 10;
+
+        // Default constructor
+        ColumnHistogram() = default;
+
+        // Create histogram from numeric values (only method needed)
+        static ColumnHistogram create_numeric_histogram(const std::vector<double> &values,
+                                                        std::size_t distinct_count,
+                                                        std::size_t null_count,
+                                                        std::size_t num_bins = DEFAULT_NUM_BINS);
+
+        // Multiply two histograms for join estimation (assumes independence)
+        ColumnHistogram multiply(const ColumnHistogram &other) const;
+
+        // Merge two histograms (for union operations)
+        ColumnHistogram merge(const ColumnHistogram &other) const;
+
+        // Get selectivity for a range [low, high]
+        double get_range_selectivity(double low, double high) const;
+
+        // Get overall selectivity (distinct/total ratio)
+        double get_selectivity() const;
+
+        // Check if histogram is valid
+        bool is_valid() const;
+
+        ColumnHistogram filter_greater_than(double threshold) const;
+        ColumnHistogram filter_less_than(double threshold) const;
+        ColumnHistogram filter_range(double low, double high) const;
+        ColumnHistogram filter_equal(double value) const;
+
+
+    private:
+        // Helper to align two histograms to same range and bin count
+        static std::pair<ColumnHistogram, ColumnHistogram> align_histograms(
+            const ColumnHistogram &left, const ColumnHistogram &right);
     };
 
     struct TableStatistics
     {
-
-        public:
-        // Per-column selectivity (fraction of unique values)
-        std::unordered_map<ThreadSafePooledString, double> selectivity;
-        // Per-column histograms
-        std::unordered_map<ThreadSafePooledString, ColumnHistogram> histograms;
-        // Total row count
+    public:
+        std::string table_name;
+        std::set<std::string> column_names;
+        // Selectivity for ALL columns (table_name.column_name format)
+        std::unordered_map<std::string, double> selectivity;
+        // Histograms ONLY for numeric columns (table_name.column_name format)
+        std::unordered_map<std::string, ColumnHistogram> histograms;
         std::size_t row_count = 0;
 
-        // Compute statistics for a table (call after loading data)
+        // Compute statistics for a table
         void compute(const Table &table);
 
-        // Get selectivity for a column (fraction unique)
-        double get_selectivity(const ThreadSafePooledString &col) const
+        // Extract table name from table
+        void extract_table_name(const Table &table);
+
+        // Get table name
+        std::string get_table_name() const;
+
+        void extract_column_names(const Table &table);
+
+        // Get selectivity for any column (numeric or non-numeric)
+        double get_selectivity(const std::string &table_col) const
         {
-            auto it = selectivity.find(col);
-            return it != selectivity.end() ? it->second : 1.0;
+            auto it = selectivity.find(table_col);
+            return it != selectivity.end() ? it->second : -1.0;
         }
 
-        // Get histogram for a column
-        const ColumnHistogram *get_histogram(const ThreadSafePooledString &col) const
+        // Get histogram for numeric columns only (returns nullptr for non-numeric)
+        const ColumnHistogram *get_histogram(const std::string &table_col) const
         {
-            auto it = histograms.find(col);
+            auto it = histograms.find(table_col);
             return it != histograms.end() ? &it->second : nullptr;
         }
 
-        // Overloads for std::string parameters (for convenience)
-        double get_selectivity(const std::string &col) const
+        // Check if a column has a histogram (i.e., is numeric)
+        bool has_histogram(const std::string &table_col) const
         {
-            // Don't try to construct a ThreadSafePooledString directly
-            // Instead, look through the keys for a match
-            for (const auto &[key, val] : selectivity)
-            {
-                if (std::string(*key) == col)
-                { // Convert the ThreadSafePooledString to std::string for comparison
-                    return val;
-                }
-            }
-            return -1.0;
+            return histograms.find(table_col) != histograms.end();
         }
 
-        const ColumnHistogram *get_histogram(const std::string &col) const
-        {
-            // Same approach for histograms
-            for (const auto &[key, val] : histograms)
-            {
-                if (std::string(*key) == col)
-                {
-                    return &val;
-                }
-            }
-            return nullptr;
-        }
+        // Multiply histograms for join estimation (only works for numeric columns)
+        ColumnHistogram multiply_histograms(const std::string &left_col, const std::string &right_col) const;
+
+        // Merge with another TableStatistics (for joins)
+        TableStatistics merge_for_join(const TableStatistics &other) const;
     };
 
 } // namespace m

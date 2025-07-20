@@ -86,6 +86,7 @@
         "thread": "cpp",
         "*.tpp": "cpp",
         "atomic": "cpp",
-        "*.tbl": "cpp"
+        "*.tbl": "cpp",
+        "system_error": "cpp"
     }
 }

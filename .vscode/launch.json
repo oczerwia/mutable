@@ -33,6 +33,23 @@
             "terminal": "integrated"
         },
         {
+            "name": "ExperimentalEstimator",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug_shared/bin/shell",
+            "args": [
+                "--plan-enumerator",
+                "RangeGOO",
+                "--cardinality-estimator",
+                "Experimental",
+                "--backend",
+                "Interpreter",
+                "zzz_micro_query.sql"
+            ],
+            "cwd": "${workspaceFolder}",
+            "terminal": "integrated"
+        },
+        {
             "name": "DPsizeOpt",
             "type": "lldb",
             "request": "launch",

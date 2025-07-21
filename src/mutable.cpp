@@ -104,6 +104,7 @@ void m::process_stream(std::istream &in, const char *filename, Diagnostic diag)
     
     std::cout.flush();
     std::cerr.flush();
+    }
 }
 
 std::unique_ptr<Instruction> m::instruction_from_string(Diagnostic &diag, const std::string &str)

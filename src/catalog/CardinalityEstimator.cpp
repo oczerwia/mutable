@@ -196,10 +196,6 @@ ExperimentalEstimator::estimate_filter(const QueryGraph& G, const DataModel& _da
         auto current_stats = result->get_stats();
         auto filtered_stats = current_stats.filter_by_cnf(filter);
         result->set_stats(filtered_stats);
-        
-        // Calculate overall selectivity from filtered histograms
-        // double overall_selectivity = calculate_overall_selectivity(filtered_stats);
-        // result->size = static_cast<std::size_t>(data.size * overall_selectivity);
     }
     
     return result;

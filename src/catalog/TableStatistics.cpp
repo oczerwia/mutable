@@ -480,4 +480,95 @@ namespace m
 
         return result;
     }
+
+    TableStatistics TableStatistics::filter_by_cnf(const cnf::CNF &cnf_condition) const
+    {
+        TableStatistics result = *this; // Copy current statistics
+
+        // Process each clause in the CNF
+        for (const auto &clause : cnf_condition)
+        {
+            // For now, only handle single-predicate clauses (no OR conditions)
+            if (clause.size() != 1)
+            {
+                continue; // Skip complex clauses for now
+            }
+
+            const auto &predicate = clause[0];
+
+            // Only handle non-negated binary expressions
+            if (predicate.negative())
+            {
+                continue; // Skip negated predicates for now
+            }
+
+            if (auto binary_expr = cast<const ast::BinaryExpr>(&predicate.expr()))
+            {
+                // Extract left side (should be table.column)
+                auto lhs = cast<const ast::Designator>(binary_expr->lhs.get());
+                if (!lhs || !lhs->has_table_name())
+                {
+                    continue;
+                }
+
+                std::string table_col = std::string(*lhs->table_name.text) + "." +
+                                        std::string(*lhs->attr_name.text);
+
+                // Check if we have a histogram for this column
+                auto hist_it = result.histograms.find(table_col);
+                if (hist_it == result.histograms.end())
+                {
+                    continue; // No histogram for this column
+                }
+
+                // Extract right side (should be a constant value) - SIMPLE WAY
+                if (auto constant = cast<const ast::Constant>(binary_expr->rhs.get()))
+                {
+                    // Convert constant to string, then to double (same as your compute() method)
+                    std::ostringstream oss;
+                    oss << *constant;
+                    std::string value_str = oss.str();
+
+                    double filter_value;
+                    try
+                    {
+                        filter_value = std::stod(value_str); // Same conversion as in compute()
+                    }
+                    catch (const std::exception &)
+                    {
+                        continue; // Couldn't convert to number
+                    }
+
+                    // Apply the appropriate filter based on operator - USE YOUR EXISTING METHODS
+                    ColumnHistogram filtered_hist;
+                    switch (binary_expr->op().type)
+                    {
+                    case TK_LESS:
+                        filtered_hist = hist_it->second.filter_less_than(filter_value);
+                        break;
+                    case TK_LESS_EQUAL:
+                        filtered_hist = hist_it->second.filter_less_than(filter_value + 1.0);
+                        break;
+                    case TK_GREATER:
+                        filtered_hist = hist_it->second.filter_greater_than(filter_value);
+                        break;
+                    case TK_GREATER_EQUAL:
+                        filtered_hist = hist_it->second.filter_greater_than(filter_value - 1.0);
+                        break;
+                    case TK_EQUAL:
+                        filtered_hist = hist_it->second.filter_equal(filter_value);
+                        break;
+                    default:
+                        continue; // Unsupported operator
+                    }
+
+                    // Update the histogram with filtered version
+                    hist_it->second = filtered_hist;
+                }
+            }
+        }
+
+        return result;
+    }
+
 } // namespace m

@@ -9,9 +9,16 @@
 #include <algorithm>
 #include <set>
 
+
 namespace m
 {
 
+    namespace cnf {
+        struct CNF;
+    }
+    namespace ast {
+        struct Constant;
+    }
     struct Table; // Forward declaration
 
     struct ColumnHistogram
@@ -109,6 +116,13 @@ namespace m
 
         // Merge with another TableStatistics (for joins)
         TableStatistics merge_for_join(const TableStatistics &other) const;
-    };
 
-} // namespace m
+        /**
+         * Filter histograms based on CNF conditions
+         * @param cnf_condition The CNF filter to apply
+         * @return New TableStatistics with filtered histograms
+         */
+        TableStatistics filter_by_cnf(const cnf::CNF& cnf_condition) const;
+
+    };
+}; // namespace m

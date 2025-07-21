@@ -186,11 +186,23 @@ std::unique_ptr<DataModel> ExperimentalEstimator::estimate_scan(const QueryGraph
 }
 
 std::unique_ptr<DataModel>
-ExperimentalEstimator::estimate_filter(const QueryGraph &, const DataModel &_data, const cnf::CNF &) const
+ExperimentalEstimator::estimate_filter(const QueryGraph& G, const DataModel& _data, const cnf::CNF& filter) const
 {
-    /* This model cannot estimate the effects of applying a filter. */
-    auto &data = as<const ExperimentalDataModel>(_data);
-    return std::make_unique<ExperimentalDataModel>(data); // copy
+    auto& data = as<const ExperimentalDataModel>(_data);
+    auto result = std::make_unique<ExperimentalDataModel>(data); // copy
+    
+    // Apply CNF filtering to histograms
+    if (!filter.empty()) {
+        auto current_stats = result->get_stats();
+        auto filtered_stats = current_stats.filter_by_cnf(filter);
+        result->set_stats(filtered_stats);
+        
+        // Calculate overall selectivity from filtered histograms
+        // double overall_selectivity = calculate_overall_selectivity(filtered_stats);
+        // result->size = static_cast<std::size_t>(data.size * overall_selectivity);
+    }
+    
+    return result;
 }
 
 std::unique_ptr<DataModel>

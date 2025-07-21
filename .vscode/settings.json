@@ -90,6 +90,7 @@
         "system_error": "cpp",
         "barrier": "cpp",
         "latch": "cpp",
-        "semaphore": "cpp"
+        "semaphore": "cpp",
+        "hash_set": "cpp"
     }
 }

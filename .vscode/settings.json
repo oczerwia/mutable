@@ -87,6 +87,9 @@
         "*.tpp": "cpp",
         "atomic": "cpp",
         "*.tbl": "cpp",
-        "system_error": "cpp"
+        "system_error": "cpp",
+        "barrier": "cpp",
+        "latch": "cpp",
+        "semaphore": "cpp"
     }
 }

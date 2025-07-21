@@ -340,103 +340,145 @@ namespace m
         }
     }
 
-    ColumnHistogram ColumnHistogram::filter_greater_than(double threshold) const
-    {
-        if (bins.empty() || total_count == 0 || threshold >= max)
-        {
+    ColumnHistogram ColumnHistogram::filter_greater_than(double threshold) const {
+        if (bins.empty() || total_count == 0 || threshold >= max) {
             return ColumnHistogram(); // Empty result
         }
-
-        if (threshold <= min)
-        {
+        
+        if (threshold <= min) {
             return *this; // No filtering needed
         }
-
-        ColumnHistogram result = *this;
-        double bin_width = (max - min) / bins.size();
-
-        // Find the first bin that contains values > threshold
-        std::size_t start_bin = static_cast<std::size_t>((threshold - min) / bin_width);
-        start_bin = std::min(start_bin, bins.size() - 1);
-
-        // Zero out bins before threshold
-        for (std::size_t i = 0; i < start_bin; ++i)
-        {
-            result.bins[i] = 0;
-        }
-
-        // Partially zero out the bin containing the threshold
-        if (start_bin < bins.size())
-        {
-            double bin_start = min + start_bin * bin_width;
-            double bin_end = min + (start_bin + 1) * bin_width;
-
-            if (threshold > bin_start && threshold < bin_end)
-            {
-                // Assume uniform distribution within the bin
-                double fraction_kept = (bin_end - threshold) / (bin_end - bin_start);
-                result.bins[start_bin] = static_cast<std::size_t>(result.bins[start_bin] * fraction_kept);
+        
+        // Step 1: Create new histogram with adjusted range [threshold, max]
+        ColumnHistogram result;
+        result.min = threshold;     // Adjust min to threshold
+        result.max = max;           // Keep original max
+        result.bins.resize(bins.size(), 0);  // Same number of bins, all zero
+        result.null_count = null_count;
+        
+        // Calculate old and new bin widths
+        double old_bin_width = (max - min) / bins.size();
+        double new_bin_width = (result.max - result.min) / result.bins.size();
+        
+        // Step 2: For each NEW bin, calculate overlap with OLD bins
+        for (std::size_t new_bin = 0; new_bin < result.bins.size(); ++new_bin) {
+            double new_bin_start = result.min + new_bin * new_bin_width;
+            double new_bin_end = result.min + (new_bin + 1) * new_bin_width;
+            
+            std::size_t new_bin_count = 0;
+            
+            // Check overlap with each OLD bin
+            for (std::size_t old_bin = 0; old_bin < bins.size(); ++old_bin) {
+                double old_bin_start = min + old_bin * old_bin_width;
+                double old_bin_end = min + (old_bin + 1) * old_bin_width;
+                
+                // Only consider the part of old bin that's > threshold
+                double effective_old_start = std::max(old_bin_start, threshold);
+                if (old_bin_end <= threshold) {
+                    continue; // This old bin is completely below threshold
+                }
+                
+                // Calculate overlap between new bin and (filtered) old bin
+                double overlap_start = std::max(new_bin_start, effective_old_start);
+                double overlap_end = std::min(new_bin_end, old_bin_end);
+                
+                if (overlap_start < overlap_end) {
+                    // There's overlap - calculate what fraction of the old bin's count to add
+                    double old_bin_kept_width = old_bin_end - effective_old_start;
+                    double overlap_width = overlap_end - overlap_start;
+                    double fraction = overlap_width / old_bin_kept_width;
+                    
+                    // Calculate how much of the old bin was kept (due to filtering)
+                    double old_bin_total_width = old_bin_end - old_bin_start;
+                    double kept_fraction = old_bin_kept_width / old_bin_total_width;
+                    std::size_t old_bin_kept_count = static_cast<std::size_t>(bins[old_bin] * kept_fraction);
+                    
+                    // Add the overlapping portion
+                    new_bin_count += static_cast<std::size_t>(old_bin_kept_count * fraction);
+                }
             }
+            
+            result.bins[new_bin] = new_bin_count;
         }
-
-        // Update metadata
-        result.min = threshold;
+        
+        // Step 3: Update metadata
         result.total_count = std::accumulate(result.bins.begin(), result.bins.end(), std::size_t(0)) + result.null_count;
-
-        // Estimate new distinct count (conservative)
-        double selectivity_ratio = double(result.total_count - result.null_count) / double(total_count - null_count);
-        result.num_distinct = static_cast<std::size_t>(num_distinct * selectivity_ratio);
-
+        
+        // Scale distinct count by fraction of data kept
+        double fraction = double(result.total_count - result.null_count) / double(total_count - null_count);
+        result.num_distinct = static_cast<std::size_t>(num_distinct * fraction);
+        
         return result;
     }
 
-    ColumnHistogram ColumnHistogram::filter_less_than(double threshold) const
-    {
-        if (bins.empty() || total_count == 0 || threshold <= min)
-        {
+    ColumnHistogram ColumnHistogram::filter_less_than(double threshold) const {
+        if (bins.empty() || total_count == 0 || threshold <= min) {
             return ColumnHistogram(); // Empty result
         }
-
-        if (threshold >= max)
-        {
+        
+        if (threshold >= max) {
             return *this; // No filtering needed
         }
-
-        ColumnHistogram result = *this;
-        double bin_width = (max - min) / bins.size();
-
-        // Find the last bin that contains values < threshold
-        std::size_t end_bin = static_cast<std::size_t>((threshold - min) / bin_width);
-        end_bin = std::min(end_bin, bins.size() - 1);
-
-        // Zero out bins after threshold
-        for (std::size_t i = end_bin + 1; i < bins.size(); ++i)
-        {
-            result.bins[i] = 0;
-        }
-
-        // Partially zero out the bin containing the threshold
-        if (end_bin < bins.size())
-        {
-            double bin_start = min + end_bin * bin_width;
-            double bin_end = min + (end_bin + 1) * bin_width;
-
-            if (threshold > bin_start && threshold < bin_end)
-            {
-                // Assume uniform distribution within the bin
-                double fraction_kept = (threshold - bin_start) / (bin_end - bin_start);
-                result.bins[end_bin] = static_cast<std::size_t>(result.bins[end_bin] * fraction_kept);
+        
+        // Step 1: Create new histogram with adjusted range [min, threshold]
+        ColumnHistogram result;
+        result.min = min;           // Keep original min
+        result.max = threshold;     // Adjust max to threshold
+        result.bins.resize(bins.size(), 0);  // Same number of bins, all zero
+        result.null_count = null_count;
+        
+        // Calculate old and new bin widths
+        double old_bin_width = (max - min) / bins.size();
+        double new_bin_width = (result.max - result.min) / result.bins.size();
+        
+        // Step 2: For each NEW bin, calculate overlap with OLD bins
+        for (std::size_t new_bin = 0; new_bin < result.bins.size(); ++new_bin) {
+            double new_bin_start = result.min + new_bin * new_bin_width;
+            double new_bin_end = result.min + (new_bin + 1) * new_bin_width;
+            
+            std::size_t new_bin_count = 0;
+            
+            // Check overlap with each OLD bin
+            for (std::size_t old_bin = 0; old_bin < bins.size(); ++old_bin) {
+                double old_bin_start = min + old_bin * old_bin_width;
+                double old_bin_end = min + (old_bin + 1) * old_bin_width;
+                
+                // Only consider the part of old bin that's < threshold
+                double effective_old_end = std::min(old_bin_end, threshold);
+                if (old_bin_start >= threshold) {
+                    continue; // This old bin is completely above threshold
+                }
+                
+                // Calculate overlap between new bin and (filtered) old bin
+                double overlap_start = std::max(new_bin_start, old_bin_start);
+                double overlap_end = std::min(new_bin_end, effective_old_end);
+                
+                if (overlap_start < overlap_end) {
+                    // There's overlap - calculate what fraction of the old bin's count to add
+                    double old_bin_kept_width = effective_old_end - old_bin_start;
+                    double overlap_width = overlap_end - overlap_start;
+                    double fraction = overlap_width / old_bin_kept_width;
+                    
+                    // Calculate how much of the old bin was kept (due to filtering)
+                    double old_bin_total_width = old_bin_end - old_bin_start;
+                    double kept_fraction = old_bin_kept_width / old_bin_total_width;
+                    std::size_t old_bin_kept_count = static_cast<std::size_t>(bins[old_bin] * kept_fraction);
+                    
+                    // Add the overlapping portion
+                    new_bin_count += static_cast<std::size_t>(old_bin_kept_count * fraction);
+                }
             }
+            
+            result.bins[new_bin] = new_bin_count;
         }
-
-        // Update metadata
-        result.max = threshold;
+        
+        // Step 3: Update metadata
         result.total_count = std::accumulate(result.bins.begin(), result.bins.end(), std::size_t(0)) + result.null_count;
-
-        // Estimate new distinct count
-        double selectivity_ratio = double(result.total_count - result.null_count) / double(total_count - null_count);
-        result.num_distinct = static_cast<std::size_t>(num_distinct * selectivity_ratio);
-
+        
+        // Scale distinct count by fraction of data kept
+        double fraction = double(result.total_count - result.null_count) / double(total_count - null_count);
+        result.num_distinct = static_cast<std::size_t>(num_distinct * fraction);
+        
         return result;
     }
 
@@ -445,39 +487,46 @@ namespace m
         return filter_greater_than(low).filter_less_than(high);
     }
 
-    ColumnHistogram ColumnHistogram::filter_equal(double value) const
-    {
-        if (bins.empty() || total_count == 0 || value < min || value > max)
-        {
+    ColumnHistogram ColumnHistogram::filter_equal(double value) const {
+        if (bins.empty() || total_count == 0 || value < min || value > max) {
             return ColumnHistogram(); // Empty result
         }
-
+        
+        // Step 1: Create new histogram with single bin for the exact value
         ColumnHistogram result;
-        result.min = value;
-        result.max = value;
-        result.bins.resize(1);
+        result.min = value;         // Min equals the target value
+        result.max = value;         // Max equals the target value  
+        result.bins.resize(1, 0);   // Single bin, start with 0
         result.null_count = null_count;
-
-        // Find which bin contains this value
-        double bin_width = (max - min) / bins.size();
-        std::size_t target_bin = static_cast<std::size_t>((value - min) / bin_width);
-        target_bin = std::min(target_bin, bins.size() - 1);
-
-        // Estimate count for this specific value
-        // Assume uniform distribution within the bin
-        if (num_distinct > 0)
-        {
-            double avg_count_per_distinct = double(total_count - null_count) / double(num_distinct);
-            result.bins[0] = static_cast<std::size_t>(avg_count_per_distinct);
+        result.num_distinct = 1;    // Only one distinct value
+        
+        // Step 2: Find which old bin contains this value and apply uniformity assumption
+        double old_bin_width = (max - min) / bins.size();
+        std::size_t target_bin = static_cast<std::size_t>((value - min) / old_bin_width);
+        target_bin = std::min(target_bin, bins.size() - 1); // Clamp to valid range
+        
+        // Apply uniformity assumption: assume values are evenly distributed within the bin
+        if (bins[target_bin] > 0 && num_distinct > 0) {
+            // Calculate how many distinct values are approximately in this bin
+            double distinct_per_bin = double(num_distinct) / double(bins.size());
+            
+            // If this bin likely contains multiple distinct values, 
+            // assume uniform distribution and take 1/distinct_per_bin fraction
+            if (distinct_per_bin > 1.0) {
+                double fraction = 1.0 / distinct_per_bin;
+                result.bins[0] = static_cast<std::size_t>(bins[target_bin] * fraction);
+            } else {
+                // If distinct_per_bin <= 1, this bin might contain only one distinct value
+                // So we can take all of it (conservative estimate)
+                result.bins[0] = bins[target_bin];
+            }
+        } else {
+            result.bins[0] = 0; // No data in the target bin
         }
-        else
-        {
-            result.bins[0] = 0;
-        }
-
+        
+        // Step 3: Update metadata
         result.total_count = result.bins[0] + result.null_count;
-        result.num_distinct = result.total_count > result.null_count ? 1 : 0;
-
+        
         return result;
     }
 

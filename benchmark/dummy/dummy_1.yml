@@ -1,0 +1,22 @@
+description: Dummy benchmark used in CI to ensure benchmarking works
+suite: dummy
+benchmark: dummy
+name: Dummy_1
+readonly: true
+data:
+    'Dummy':
+        attributes:
+            'id': 'INT NOT NULL'
+            'val': 'FLOAT NOT NULL'
+        file: 'benchmark/dummy/data/dummy.csv'
+        format: 'csv'
+        delimiter: ','
+        header: 1
+systems:
+    mutable:
+        configurations:
+            'Interpreter, RangeCartesianProduct, RangeGOO':
+                args: --plan-enumerator RangeGOO --cardinality-estimator RangeCartesianProduct --backend Interpreter
+                pattern: '^Execute query:.*'
+        cases:
+            'Dummy': SELECT * FROM Dummy;

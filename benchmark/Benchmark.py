@@ -24,7 +24,7 @@ import yaml
 
 YML_SCHEMA: str = os.path.join('benchmark', '_schema.yml')                      # The validation schema
 
-BENCHMARK_SYSTEMS: list[str] = ['mutable', 'PostgreSQL', 'DuckDB', 'HyPer']     # List of systems
+BENCHMARK_SYSTEMS: list[str] = ['mutable']#, 'PostgreSQL', 'DuckDB', 'HyPer']     # List of systems
 
 
 class BenchmarkError(Exception):
@@ -271,7 +271,7 @@ def perform_experiment(
     params['suite']        = info.suite_name
     params['benchmark']    = info.benchmark_name
     params['name']         = info.experiment_name
-    params['readonly']     = yml.get('readonly')
+    params['readonly']     = True           # no write experiments planned
     params['chart']        = yml.get('chart')
     params['data']         = info.experiment_data
     params['path_to_file'] = info.path_to_file
@@ -510,6 +510,9 @@ if __name__ == '__main__':
                         help='create a .pgsql file with instructions to insert measurement results into a PostgreSQL '
                              'database')
     parser.add_argument('-b', '--builddir', help='path to the build directory (defaults to \'build/release\')',
-                        default=os.path.join('build', 'release'), type=str, metavar='PATH')
+                        default=os.path.join('build', 'debug_shared'), type=str, metavar='PATH')
     args = parser.parse_args()
     run_benchmarks(args)
+
+    # The command I use
+    # pipenv run benchmark/Benchmark.py --no-compare --output dummy_test.csv -v benchmark/job-light/job-light_1.yml

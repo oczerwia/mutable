@@ -1,7 +1,7 @@
 description: Dummy benchmark used in CI to ensure benchmarking works
 suite: dummy
 benchmark: dummy
-name: Dummy
+name: Dummy_2
 readonly: true
 data:
     'Dummy':
@@ -15,17 +15,8 @@ data:
 systems:
     mutable:
         configurations:
-            'WasmV8, PAX4M':
-                args: --backend WasmV8 --data-layout PAX4M
+            'Interpreter, CartesianProduct, GOO':
+                args: --plan-enumerator GOO --cardinality-estimator CartesianProduct --backend Interpreter
                 pattern: '^Execute query:.*'
         cases:
             'Dummy': SELECT * FROM Dummy;
-    PostgreSQL:
-        cases:
-            'Dummy': SELECT * FROM "Dummy";
-    DuckDB:
-        cases:
-            'Dummy': SELECT * FROM "Dummy";
-    HyPer:
-        cases:
-            'Dummy': SELECT * FROM "Dummy";

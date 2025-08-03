@@ -9,14 +9,15 @@
 #include <algorithm>
 #include <set>
 
-
 namespace m
 {
 
-    namespace cnf {
+    namespace cnf
+    {
         struct CNF;
     }
-    namespace ast {
+    namespace ast
+    {
         struct Constant;
     }
     struct Table; // Forward declaration
@@ -62,11 +63,62 @@ namespace m
         ColumnHistogram filter_range(double low, double high) const;
         ColumnHistogram filter_equal(double value) const;
 
+        /**
+         * Estimate the number of distinct groups this column would produce
+         * This is essentially the distinct count after filtering
+         */
+        std::size_t estimate_group_count() const
+        {
+            return num_distinct;
+        }
+
+        /**
+         * Estimate the average size of each group
+         * Used for cardinality estimation after GROUP BY
+         */
+        double estimate_average_group_size() const
+        {
+            if (num_distinct == 0)
+                return 0.0;
+            return double(total_count - null_count) / double(num_distinct);
+        }
+
+        /**
+         * Estimate cardinality after GROUP BY on this column
+         * Returns the number of groups (distinct values)
+         */
+        std::size_t estimate_group_by_cardinality() const
+        {
+            return num_distinct;
+        }
+
+        /**
+         * Create a histogram representing the result after GROUP BY
+         * The resulting histogram has one "value" per group
+         */
+        ColumnHistogram apply_group_by() const
+        {
+            ColumnHistogram result = *this;    // Keep original distribution
+            result.total_count = num_distinct; // One row per group
+
+            // Scale all bins proportionally
+            double scale_factor = double(num_distinct) / double(total_count - null_count);
+            for (auto &bin : result.bins)
+            {
+                bin = static_cast<std::size_t>(bin * scale_factor);
+            }
+            result.null_count = 0; // GROUP BY eliminates nulls
+            return result;
+        }
 
     private:
         // Helper to align two histograms to same range and bin count
         static std::pair<ColumnHistogram, ColumnHistogram> align_histograms(
             const ColumnHistogram &left, const ColumnHistogram &right);
+
+        // Add this helper method
+        static ColumnHistogram redistribute_to_range(
+            const ColumnHistogram &hist, double new_min, double new_max, std::size_t new_bin_count);
     };
 
     struct TableStatistics
@@ -122,7 +174,16 @@ namespace m
          * @param cnf_condition The CNF filter to apply
          * @return New TableStatistics with filtered histograms
          */
-        TableStatistics filter_by_cnf(const cnf::CNF& cnf_condition) const;
+        TableStatistics filter_by_cnf(const cnf::CNF &cnf_condition) const;
 
+        /**
+        Estimate cardinality after GROUP BY on specified columns
+        */
+        std::size_t estimate_group_by_cardinality(const std::vector<std::string> &group_columns) const;
+
+        /**
+         * Apply GROUP BY to all histograms
+         */
+        TableStatistics apply_group_by(const std::vector<std::string> &group_columns) const;
     };
 }; // namespace m

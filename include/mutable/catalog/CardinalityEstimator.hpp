@@ -256,17 +256,14 @@ namespace m
     {
         struct ExperimentalDataModel : DataModel
         {
-            std::size_t size;
-
 
             ExperimentalDataModel() = default;
-            ExperimentalDataModel(std::size_t size) : size(size) {}
-
+    
+            ExperimentalDataModel(const ExperimentalDataModel& other) = default;  // Use default copy
             void assign_to(Subproblem) override { /* nothing to be done */ }
-            void set_cardinality(double cardinality) override
-            {
-                size = cardinality;
-            }
+            void set_cardinality(double cardinality) override { size = cardinality; }
+            void set_stats(const TableStatistics& table_stats) { stats = table_stats; }
+            TableStatistics get_stats() const { return stats; }
         };
 
         ExperimentalEstimator() {}
@@ -301,6 +298,10 @@ namespace m
 
     private:
         void print(std::ostream &out) const override;
+        std::size_t estimate_cardinality_from_histograms(const TableStatistics& filtered_stats, std::size_t original_size) const;
+        std::vector<std::pair<std::string, std::string>> extract_equi_join_columns(const cnf::CNF& condition) const;
+        std::string extract_column_name_from_expression(const ast::Expr& expr) const;
+
     };
 
     /**

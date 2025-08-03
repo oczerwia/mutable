@@ -6,6 +6,11 @@ TODO / Next steps
 [x] done
 [ ] open
 
+[ ] Features
+    [ ] Util class for table names - names, columns, joined, etc.
+    [ ] Print out intermediate cardinalities in a machine readable way
+
+
 [ ] Innovation
     [*] How to propagate ranges? UB: Recompute LpBound LB: ???
     [x] How to collapse ranges? - Expected value or upper bound

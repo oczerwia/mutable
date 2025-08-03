@@ -17,6 +17,8 @@
 #include <mutable/util/Diagnostic.hpp>
 #include <mutable/util/Pool.hpp>
 #include <nlohmann/json.hpp>
+#include <mutable/catalog/TableStatistics.hpp>
+#include <mutable/parse/AST.hpp>
 
 using namespace m;
 
@@ -163,6 +165,9 @@ std::unique_ptr<DataModel> ExperimentalEstimator::empty_model() const
 {
     auto model = std::make_unique<ExperimentalDataModel>();
     model->size = 0;
+    TableStatistics empty_stats;
+    empty_stats.row_count = 0;
+    model->set_stats(empty_stats);
     return model;
 }
 
@@ -174,13 +179,9 @@ std::unique_ptr<DataModel> ExperimentalEstimator::estimate_scan(const QueryGraph
     auto model = std::make_unique<ExperimentalDataModel>();
     model->size = BT.table().store().num_rows();
 
-
-    
-    if (auto stats_ptr = BT.table().statistics()) {
-        model->set_stats(*stats_ptr);
-    }
-
-    auto test = model->get_stats();
+    // Load table statistics with histograms
+    auto stats_ptr = BT.table().statistics();
+    model->set_stats(*stats_ptr);
 
     return model;
 }
@@ -189,14 +190,19 @@ std::unique_ptr<DataModel>
 ExperimentalEstimator::estimate_filter(const QueryGraph& G, const DataModel& _data, const cnf::CNF& filter) const
 {
     auto& data = as<const ExperimentalDataModel>(_data);
-    auto result = std::make_unique<ExperimentalDataModel>(data); // copy
+    auto result = std::make_unique<ExperimentalDataModel>(data);
     
-    // Apply CNF filtering to histograms
-    if (!filter.empty()) {
-        auto current_stats = result->get_stats();
-        auto filtered_stats = current_stats.filter_by_cnf(filter);
-        result->set_stats(filtered_stats);
+    if (filter.empty()) {
+        return result;
     }
+    
+    // Apply histogram-based filtering
+    auto current_stats = result->get_stats();
+    auto filtered_stats = current_stats.filter_by_cnf(filter);
+    result->set_stats(filtered_stats);
+    
+    // PURE HISTOGRAM: Extract cardinality from filtered histograms
+    result->size = estimate_cardinality_from_histograms(filtered_stats, current_stats.row_count);
     
     return result;
 }
@@ -205,48 +211,140 @@ std::unique_ptr<DataModel>
 ExperimentalEstimator::estimate_limit(const QueryGraph &, const DataModel &_data, std::size_t limit,
                                       std::size_t offset) const
 {
-    auto data = as<const ExperimentalDataModel>(_data);
+    auto& data = as<const ExperimentalDataModel>(_data);
     const std::size_t remaining = offset > data.size ? 0UL : data.size - offset;
-    auto model = std::make_unique<ExperimentalDataModel>();
-    model->size = std::min(remaining, limit);
-    return model;
+    auto result = std::make_unique<ExperimentalDataModel>(data); // copy stats
+    result->size = std::min(remaining, limit);
+    
+    // Update statistics to reflect the limit
+    auto stats = result->get_stats();
+    stats.row_count = result->size;
+    result->set_stats(stats);
+    
+    return result;
 }
 
 std::unique_ptr<DataModel>
-ExperimentalEstimator::estimate_grouping(const QueryGraph &, const DataModel &_data,
-                                         const std::vector<group_type> &) const
+ExperimentalEstimator::estimate_grouping(const QueryGraph& G, const DataModel& _data,
+                                         const std::vector<group_type>& groups) const
 {
-    auto &data = as<const ExperimentalDataModel>(_data);
-    auto model = std::make_unique<ExperimentalDataModel>();
-    model->size = data.size; // this model cannot estimate the effects of grouping
-    return model;
+    auto& data = as<const ExperimentalDataModel>(_data);
+    auto result = std::make_unique<ExperimentalDataModel>(data); // copy
+    
+    if (groups.empty()) {
+        result->size = 1; // Single group
+        return result;
+    }
+    
+    // Extract column names from group expressions
+    std::vector<std::string> group_columns;
+    for (auto [grp, alias] : groups) {
+        std::string col_name = extract_column_name_from_expression(grp); // TODO
+        if (!col_name.empty()) {
+            group_columns.push_back(col_name);
+        }
+    }
+    
+    // Use histogram-based group estimation
+    auto current_stats = result->get_stats();
+    auto grouped_stats = current_stats.apply_group_by(group_columns);
+    result->set_stats(grouped_stats);
+    result->size = grouped_stats.row_count;
+    
+    return result;
 }
-
 std::unique_ptr<DataModel>
-ExperimentalEstimator::estimate_join(const QueryGraph &, const DataModel &_left, const DataModel &_right,
-                                     const cnf::CNF &) const
+ExperimentalEstimator::estimate_join(const QueryGraph& G, const DataModel& _left, const DataModel& _right,
+                                     const cnf::CNF& condition) const
 {
-    auto left = as<const ExperimentalDataModel>(_left);
-    auto right = as<const ExperimentalDataModel>(_right);
-    auto model = std::make_unique<ExperimentalDataModel>();
-    model->size = left.size * right.size; // this model cannot estimate the effects of a join condition
+    auto& left = as<const ExperimentalDataModel>(_left);
+    auto& right = as<const ExperimentalDataModel>(_right);
+    auto result = std::make_unique<ExperimentalDataModel>();
+    
+    auto left_stats = left.get_stats();
+    auto right_stats = right.get_stats();
 
-    model->get_range();
-
-    return model;
+    auto printed = to_string(condition);
+    condition.dump();
+    
+    // Extract join columns using CNF's built-in method
+    auto join_columns = condition.get_join_columns();
+    
+    if (join_columns.empty()) {
+        // No join conditions found - Cartesian product
+        result->size = left.size * right.size;
+        auto merged_stats = left_stats.merge_for_join(right_stats);
+        merged_stats.row_count = result->size;
+        result->set_stats(merged_stats);
+        return result;
+    }
+    
+    // PURE HISTOGRAM: Use join columns for histogram-based estimation
+    std::size_t estimated_join_size = left.size * right.size; // Start with cartesian product
+    bool found_histogram_join = false;
+    
+    // Iterate through all table pairs in join_columns
+    for (const auto& [left_table, left_columns] : join_columns) {
+        for (const auto& [right_table, right_columns] : join_columns) {
+            if (right_table == left_table) continue; // Skip same table
+            
+            // Try to find matching columns between tables
+            for (const std::string& left_col : left_columns) {
+                for (const std::string& right_col : right_columns) {
+                    std::string left_full_col = left_table + "." + left_col;
+                    std::string right_full_col = right_table + "." + right_col;
+                    
+                    const auto* left_hist = left_stats.get_histogram(left_full_col);
+                    const auto* right_hist = right_stats.get_histogram(right_full_col);
+                    
+                    if (left_hist && right_hist && left_hist->is_valid() && right_hist->is_valid()) {
+                        auto join_hist = left_hist->multiply(*right_hist);
+                        if (join_hist.is_valid()) {
+                            estimated_join_size = std::min(estimated_join_size, join_hist.total_count);
+                            found_histogram_join = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    M_insist(found_histogram_join, "Pure histogram estimator requires histograms for all join columns");
+    
+    result->size = estimated_join_size;
+    auto merged_stats = left_stats.merge_for_join(right_stats);
+    merged_stats.row_count = result->size;
+    result->set_stats(merged_stats);
+    
+    return result;
 }
-
 template <typename PlanTable>
 std::unique_ptr<DataModel>
-ExperimentalEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph &, Subproblem to_join,
-                                  const cnf::CNF &) const
+ExperimentalEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph &G, Subproblem to_join,
+                                  const cnf::CNF &condition) const
 {
     M_insist(not to_join.empty());
-    auto model = std::make_unique<ExperimentalDataModel>();
-    model->size = 1UL;
-    for (auto it = to_join.begin(); it != to_join.end(); ++it)
-        model->size *= as<const ExperimentalDataModel>(*PT[it.as_set()].model).size;
-    return model;
+    
+    if (to_join.size() == 1) {
+        // Fix: Use reference instead of trying to copy unique_ptr
+        auto& single_model = as<const ExperimentalDataModel>(*PT[to_join.begin().as_set()].model);
+        return std::make_unique<ExperimentalDataModel>(single_model);
+    }
+    
+    // Join multiple tables iteratively
+    auto it = to_join.begin();
+    auto& first_model = as<const ExperimentalDataModel>(*PT[it.as_set()].model);
+    auto result_model = std::make_unique<ExperimentalDataModel>(first_model);
+    ++it;
+    
+    for (; it != to_join.end(); ++it) {
+        // Fix: Use reference correctly
+        auto& right_model = as<const ExperimentalDataModel>(*PT[it.as_set()].model);
+        auto joined = estimate_join(G, *result_model, right_model, condition); 
+        result_model = std::unique_ptr<ExperimentalDataModel>(static_cast<ExperimentalDataModel*>(joined.release()));
+    }
+    
+    return result_model;
 }
 
 template std::unique_ptr<DataModel>
@@ -260,6 +358,71 @@ std::size_t ExperimentalEstimator::predict_cardinality(const DataModel &data) co
 {
     return as<const ExperimentalDataModel>(data).size;
 }
+
+
+// Helper method implementations for ExperimentalEstimator
+std::size_t ExperimentalEstimator::estimate_cardinality_from_histograms(const TableStatistics& filtered_stats, std::size_t original_size) const {
+    if (filtered_stats.histograms.empty()) {
+        return 1; // Very selective filter if no histograms
+    }
+    
+    // Take minimum cardinality across all histograms (most restrictive filter)
+    std::size_t min_cardinality = std::numeric_limits<std::size_t>::max();
+    bool found_valid = false;
+    
+    for (const auto& [col_name, hist] : filtered_stats.histograms) {
+        if (hist.is_valid() && hist.total_count > 0) {
+            min_cardinality = std::min(min_cardinality, hist.total_count);
+            found_valid = true;
+        }
+    }
+    
+    return found_valid ? min_cardinality : original_size;
+}
+
+std::vector<std::pair<std::string, std::string>> ExperimentalEstimator::extract_equi_join_columns(const cnf::CNF& condition) const {
+    std::vector<std::pair<std::string, std::string>> join_pairs;
+    
+    for (const auto& clause : condition) {
+        if (clause.size() != 1) continue; // Skip complex clauses
+        
+        const auto& predicate = clause[0];
+        if (predicate.negative()) continue; // Skip negated predicates
+        
+        if (auto binary_expr = cast<const ast::BinaryExpr>(&predicate.expr())) {
+            if (binary_expr->op().type == TK_EQUAL) {
+                // Check if both sides are designators (table.column)
+                auto left_des = cast<const ast::Designator>(binary_expr->lhs.get());
+                auto right_des = cast<const ast::Designator>(binary_expr->rhs.get());
+                
+                if (left_des && right_des && 
+                    left_des->has_table_name() && right_des->has_table_name()) {
+                    
+                    std::string left_col = std::string(*left_des->table_name.text) + "." + 
+                                         std::string(*left_des->attr_name.text);
+                    std::string right_col = std::string(*right_des->table_name.text) + "." + 
+                                          std::string(*right_des->attr_name.text);
+                    
+                    join_pairs.emplace_back(left_col, right_col);
+                }
+            }
+        }
+    }
+    
+    return join_pairs;
+}
+
+std::string ExperimentalEstimator::extract_column_name_from_expression(const ast::Expr& expr) const {
+    if (auto designator = cast<const ast::Designator>(&expr)) {
+        if (designator->has_table_name()) {
+            return std::string(*designator->table_name.text) + "." + 
+                   std::string(*designator->attr_name.text);
+        } else {
+            return std::string(*designator->attr_name.text);
+        }
+    }
+    return ""; // Unsupported expression type
+} // TODO: Check the implementations of these helper functions!
 
 M_LCOV_EXCL_START
 void ExperimentalEstimator::print(std::ostream &out) const

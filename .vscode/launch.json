@@ -16,6 +16,23 @@
             "terminal": "integrated"
         },
         {
+            "name": "SelectivityBased",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug_shared/bin/shell",
+            "args": [
+                "--plan-enumerator",
+                "RangeGOO",
+                "--backend",
+                "Interpreter",
+                "--cardinality-estimator",
+                "Selectivitybased",
+                "zzz_micro_query.sql"
+            ],
+            "cwd": "${workspaceFolder}",
+            "terminal": "integrated"
+        },
+        {
             "name": "RangeGOO",
             "type": "lldb",
             "request": "launch",

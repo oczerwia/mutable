@@ -127,6 +127,9 @@ namespace m
         std::string table_name;
         std::set<std::string> column_names;
         // Selectivity for ALL columns (table_name.column_name format)
+
+        std::unordered_map<std::string, std::size_t> distinct_counts;
+        
         std::unordered_map<std::string, double> selectivity;
         // Histograms ONLY for numeric columns (table_name.column_name format)
         std::unordered_map<std::string, ColumnHistogram> histograms;

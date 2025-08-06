@@ -362,10 +362,15 @@ namespace m
         for (std::size_t col = 0; col < schema.num_entries(); ++col)
         {
             std::string col_name = std::string(*schema[col].id.name);
-            std::string full_key = table_name + "." + col_name;
 
             // Compute selectivity for ALL columns (numeric and non-numeric)
             std::unordered_set<std::string> unique_vals(string_values[col].begin(), string_values[col].end());
+
+            std::size_t nd = unique_vals.size();
+            std::string full_key = table_name + "." + col_name;
+            // store explicit NDV
+            distinct_counts[full_key] = nd;
+
             double sel = row_count > 0 ? double(unique_vals.size()) / double(row_count) : 1.0;
             selectivity[full_key] = sel;
 
@@ -395,34 +400,28 @@ namespace m
     TableStatistics TableStatistics::merge_for_join(const TableStatistics &other) const
     {
         TableStatistics result;
-
-        // Combine table names
+        // combine names, columns, histograms, selectivity as before…
         result.table_name = table_name + "_" + other.table_name;
-
-        // Merge column names
         result.column_names = column_names;
         result.column_names.insert(other.column_names.begin(), other.column_names.end());
 
-        // Merge selectivities (for all columns)
         result.selectivity = selectivity;
-        for (const auto &[key, value] : other.selectivity)
-        {
-            result.selectivity[key] = value;
-        }
+        for (auto &kv : other.selectivity)
+            result.selectivity[kv.first] = kv.second;
 
-        // Merge histograms (only numeric columns will have histograms)
         result.histograms = histograms;
-        for (const auto &[key, value] : other.histograms)
-        {
-            result.histograms[key] = value;
-        }
+        for (auto &kv : other.histograms)
+            result.histograms[kv.first] = kv.second;
 
-        // Row count will be set by join estimation
-        result.row_count = 0; // TODO: Needs to change, ADJUST ROW SIZES OF EACH HISTOGRAM
+        // merge distinct_counts too
+        result.distinct_counts = distinct_counts;
+        for (auto &kv : other.distinct_counts)
+            result.distinct_counts[kv.first] = kv.second;
 
+        // row_count will be set by the estimator
+        result.row_count = 0;
         return result;
     }
-
     std::string TableStatistics::get_table_name() const
     {
         return table_name;

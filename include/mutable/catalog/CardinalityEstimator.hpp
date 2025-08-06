@@ -47,33 +47,37 @@ namespace m
      */
     struct M_EXPORT DataModel
     {
-    virtual ~DataModel() = 0;
-    virtual void assign_to(Subproblem s) = 0;
-    virtual void set_cardinality(double cardinality) = 0;
+        virtual ~DataModel() = 0;
+        virtual void assign_to(Subproblem s) = 0;
+        virtual void set_cardinality(double cardinality) = 0;
 
-    std::size_t size = 0;
-    std::pair<double, double> range = {-1.0, -1.0}; // -1 indicates unset
-    TableStatistics stats;
-    
-    bool has_range() const { 
-        return range.first >= 0.0; // Range exists if set to valid values
-    }
-    
-    std::pair<double, double> get_range() const;
-    
-    void set_range(std::pair<double, double> new_range) { 
-        range = new_range;
-        set_cardinality(new_range.second); // Update cardinality with upper bound
-    }
+        std::size_t size = 0;
+        std::pair<double, double> range = {-1.0, -1.0}; // -1 indicates unset
+        TableStatistics stats;
 
-    void set_stats(const TableStatistics& table_stats) {
-        stats = table_stats;
-    }
-    
-    const TableStatistics& get_stats() const {
-        return stats;
-    }
-};
+        bool has_range() const
+        {
+            return range.first >= 0.0; // Range exists if set to valid values
+        }
+
+        std::pair<double, double> get_range() const;
+
+        void set_range(std::pair<double, double> new_range)
+        {
+            range = new_range;
+            set_cardinality(new_range.second); // Update cardinality with upper bound
+        }
+
+        void set_stats(const TableStatistics &table_stats)
+        {
+            stats = table_stats;
+        }
+
+        const TableStatistics &get_stats() const
+        {
+            return stats;
+        }
+    };
 
     struct M_EXPORT estimate_join_all_tag : const_virtual_crtp_helper<estimate_join_all_tag>::
                                                 returns<std::unique_ptr<DataModel>>::
@@ -258,11 +262,11 @@ namespace m
         {
 
             ExperimentalDataModel() = default;
-    
-            ExperimentalDataModel(const ExperimentalDataModel& other) = default;  // Use default copy
+
+            ExperimentalDataModel(const ExperimentalDataModel &other) = default; // Use default copy
             void assign_to(Subproblem) override { /* nothing to be done */ }
             void set_cardinality(double cardinality) override { size = cardinality; }
-            void set_stats(const TableStatistics& table_stats) { stats = table_stats; }
+            void set_stats(const TableStatistics &table_stats) { stats = table_stats; }
             TableStatistics get_stats() const { return stats; }
         };
 
@@ -298,10 +302,9 @@ namespace m
 
     private:
         void print(std::ostream &out) const override;
-        std::size_t estimate_cardinality_from_histograms(const TableStatistics& filtered_stats, std::size_t original_size) const;
-        std::vector<std::pair<std::string, std::string>> extract_equi_join_columns(const cnf::CNF& condition) const;
-        std::string extract_column_name_from_expression(const ast::Expr& expr) const;
-
+        std::size_t estimate_cardinality_from_histograms(const TableStatistics &filtered_stats, std::size_t original_size) const;
+        std::vector<std::pair<std::string, std::string>> extract_equi_join_columns(const cnf::CNF &condition) const;
+        std::string extract_column_name_from_expression(const ast::Expr &expr) const;
     };
 
     /**
@@ -577,4 +580,64 @@ namespace m
         void print(std::ostream &out) const override;
     };
 
+    /**
+     * Selectivity-based estimator: applies selectivity formulas from dumb_card_est.md
+     */
+    struct M_EXPORT SelectivityEstimator : CardinalityEstimatorCRTP<SelectivityEstimator>
+    {
+    public:
+        struct SelectivityDataModel : DataModel
+        {
+            std::set<std::string> original_tables;
+            
+
+            SelectivityDataModel() = default;
+            SelectivityDataModel(const SelectivityDataModel &other) = default;
+            
+            // Constructor for merged results from joins
+            SelectivityDataModel(std::size_t sz, TableStatistics stats, std::set<std::string> tables)
+                : original_tables(std::move(tables))
+            {
+                size = sz;
+                set_stats(stats);
+            }
+            
+            void assign_to(Subproblem) override { /* no-op */ }
+            void set_cardinality(double c) override { size = c; }
+        };
+
+        SelectivityEstimator();
+        SelectivityEstimator(ThreadSafePooledString);
+
+        std::unique_ptr<DataModel> empty_model() const override;
+        std::unique_ptr<DataModel> estimate_scan(const QueryGraph &G, Subproblem P) const override;
+        std::unique_ptr<DataModel> estimate_filter(const QueryGraph &G,
+                                                   const DataModel &data,
+                                                   const cnf::CNF &filter) const override;
+        std::unique_ptr<DataModel> estimate_join(const QueryGraph &G,
+                                                 const DataModel &left,
+                                                 const DataModel &right,
+                                                 const cnf::CNF &condition) const override;
+        std::unique_ptr<DataModel> estimate_grouping(const QueryGraph &G,
+                                                     const DataModel &data,
+                                                     const std::vector<group_type> &groups) const override;
+        std::unique_ptr<DataModel> estimate_limit(const QueryGraph &G,
+                                                  const DataModel &data,
+                                                  std::size_t limit,
+                                                  std::size_t offset) const override;
+
+
+        template <typename PlanTable>
+        std::unique_ptr<DataModel>
+        operator()(estimate_join_all_tag,
+                   PlanTable &&PT,
+                   const QueryGraph &G,
+                   Subproblem to_join,
+                   const cnf::CNF &condition) const;
+
+        std::size_t predict_cardinality(const DataModel &data) const override;
+
+    private:
+        void print(std::ostream &out) const override;
+    };
 }

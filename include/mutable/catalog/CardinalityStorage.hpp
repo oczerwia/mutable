@@ -83,13 +83,6 @@ namespace m
             return cardinality_range_;
         }
 
-        // comparison data
-        // sources already defined above
-
-        // filter
-        // joins
-        // group_by
-        // aggregate
 
         bool operator==(const ReducedQueryGraph &other) const
         {
@@ -148,42 +141,6 @@ namespace m
             return instance;
         }
 
-        void quick_test_generator()
-        {
-            ReducedQueryGraph test_query;
-            test_query.source_names_.insert("table_1");
-            test_query.source_names_.insert("table_2");
-            test_query.source_names_.insert("table_3");
-            test_query.cardinality_ = 10.0;
-
-            reduced_query_graphs_.push_back(test_query);
-
-            ReducedQueryGraph test_query_2;
-            test_query_2.source_names_.insert("table_1");
-            test_query_2.source_names_.insert("table_2");
-            test_query_2.cardinality_ = 20.0;
-
-            reduced_query_graphs_.push_back(test_query_2);
-
-            // Add a third test query with same tables as test_query_2 but with a filter
-            ReducedQueryGraph test_query_3;
-            test_query_3.source_names_.insert("table_1");
-            test_query_3.source_names_.insert("table_2");
-            test_query_3.source_filters_.insert("(table_1.col_1 < 400)");
-            test_query_3.cardinality_ = 15.0;
-
-            reduced_query_graphs_.push_back(test_query_3);
-
-            if (debug_output_)
-            {
-                std::cout << "Generated test query with tables: ";
-                for (const auto &table : test_query.source_names_)
-                {
-                    std::cout << table << " ";
-                }
-                std::cout << "and cardinality: " << test_query.cardinality_ << std::endl;
-            }
-        }
 
         /**
          * @brief Get the current table names
@@ -577,7 +534,6 @@ namespace m
                     }
                 }
 
-                // Only add if not found existing
                 if (!found_existing)
                 {
                     reduced_query_graphs_.push_back(new_graph);
@@ -605,7 +561,6 @@ namespace m
             }
         }
 
-        // NEW: Check if a range exists
         bool has_stored_cardinality_range(SmallBitset involved_tables)
         {
             // Reuse existing logic to find the correct ReducedQueryGraph

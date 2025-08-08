@@ -11,7 +11,7 @@ namespace m {
 struct PaxStore : Store
 {
 #ifndef NDEBUG
-    static constexpr std::size_t ALLOCATION_SIZE = 1UL << 30; ///< 1 GiB
+    static constexpr std::size_t ALLOCATION_SIZE = 1UL << 35; ///< 1 GiB
 #else
     static constexpr std::size_t ALLOCATION_SIZE = 1UL << 37; ///< 128 GiB
 #endif

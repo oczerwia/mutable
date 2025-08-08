@@ -50,7 +50,7 @@
             "terminal": "integrated"
         },
         {
-            "name": "ExperimentalEstimator",
+            "name": "Histogram",
             "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/build/debug_shared/bin/shell",
@@ -58,7 +58,7 @@
                 "--plan-enumerator",
                 "RangeGOO",
                 "--cardinality-estimator",
-                "Experimental",
+                "Histogram",
                 "--backend",
                 "Interpreter",
                 "zzz_micro_query.sql"

@@ -7,19 +7,17 @@ TODO / Next steps
 [ ] open
 
 Diese Woche: 
-    [ ] Fix cardinality storage
-    [ ] Make histogram run
-        [ ] Change join size estimation
-        [ ] Implement function to adjust histogram to new cardinality (Use independence assumption to reduce each bucket)
+    [x] Fix cardinality storage
+    [x] Make histogram run
+        [x] Change join size estimation
+        [x] Implement function to adjust histogram to new cardinality (Use independence assumption to reduce each bucket)
+    [ ] Extract estimated and extracted values
     [ ] Start running on server
 
 
 Nächste Woche:
     [ ] LpBound
 
-
-[*] Hot fix
-    [*] Fix cardinality storage
 
 [ ] Features
     [ ] Util class for table names - names, columns, joined, etc.

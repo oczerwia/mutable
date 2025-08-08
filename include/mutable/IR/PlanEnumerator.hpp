@@ -122,7 +122,7 @@ namespace m
                 CardinalityStorage::Get().update_current_table_names(G);
                 CardinalityStorage::Get().extract_all_filters_as_strings(G);
 
-                CardinalityStorage::Get().quick_test_generator();
+
 
                 while (begin + 1 != end)
                 {
@@ -291,9 +291,7 @@ namespace m
 
                 CardinalityStorage::Get().update_current_table_names(G);
                 CardinalityStorage::Get().extract_all_filters_as_strings(G);
-                // add selectivity retrieval here please
                 const auto& table_names = CardinalityStorage::Get().get_current_table_names();
-                // double sel = m::CardinalityStorage::Get().get_selectivity(table_name, column_name);
                 
 
                 while (begin + 1 != end)

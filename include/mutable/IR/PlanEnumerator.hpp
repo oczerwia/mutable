@@ -309,7 +309,7 @@ namespace m
                             {
                                 const Subproblem joined = outer->subproblem | inner->subproblem;
 
-                                // Create model if needed
+                                std::pair<double, double> current_range = {-1.0, -1.0};
                                 if (not PT[joined].model)
                                     PT[joined].model = CE.estimate_join(G, *PT[outer->subproblem].model,
                                                                         *PT[inner->subproblem].model, cnf::CNF{});
@@ -318,26 +318,9 @@ namespace m
                                 {
                                     double stored_card = CardinalityStorage::Get().get_cardinality();
                                     PT[joined].model->set_cardinality(stored_card);
+                                    current_range = {stored_card, stored_card};
+                                    PT[joined].model->set_range(current_range);
                                 }
-
-                                if (CardinalityStorage::Get().has_stored_cardinality_range(joined) &&
-                                    CardinalityStorage::Get().has_stored_cardinality(joined))
-                                {
-                                    auto stored_range = CardinalityStorage::Get().get_cardinality_range();
-                                    double true_card = CardinalityStorage::Get().get_cardinality();
-                                    auto adjusted_range = range_adjustment_strategy_->adjust(stored_range, true_card);
-                                    PT[joined].model->set_range(adjusted_range);
-                                }
-                                else if (CardinalityStorage::Get().has_stored_cardinality_range(joined))
-                                {
-                                    auto stored_range = CardinalityStorage::Get().get_cardinality_range();
-                                    PT[joined].model->set_range(stored_range);
-                                }
-
-                                // Get current range (either stored or estimated)
-                                std::pair<double, double> current_range;
-                                if (PT[joined].model->has_range())
-                                    current_range = PT[joined].model->get_range();
                                 else
                                 {
                                     double card = CE.predict_cardinality(*PT[joined].model);
@@ -364,7 +347,6 @@ namespace m
             void compute_plan(PlanTable &PT, const QueryGraph &G, const AdjacencyMatrix &M,
                               const CostFunction &CF, const CardinalityEstimator &CE, node *begin, node *end) const
             {
-                // Same as GOO but using our for_each_join
                 for_each_join([&](const Subproblem left, const Subproblem right)
                               {
                     static cnf::CNF condition;

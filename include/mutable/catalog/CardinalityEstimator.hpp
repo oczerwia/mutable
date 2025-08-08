@@ -254,24 +254,64 @@ namespace m
     };
 
     /**
-     * Experimentalestimator - WIP (Used to see what needs to be propagated across the whole way)
-     */
-    struct M_EXPORT ExperimentalEstimator : CardinalityEstimatorCRTP<ExperimentalEstimator>
+ * Histogram-based cardinality estimator that uses equi-width histograms to estimate 
+ * result sizes of relational operations.
+ * 
+ * This estimator maintains histograms for each column and applies the following assumptions:
+ * 
+ * 1. Filters:
+ *    - Uniform distribution of values within each histogram bucket
+ *    - Independent predicates (combined via multiplication of selectivities)
+ *    - Range predicates estimate partial bucket coverage proportionally
+ *    - Equality predicates use bucket density (count/width)
+ *    - After filtering, all histograms are rescaled to maintain consistency
+ * 
+ * 2. Joins:
+ *    - Uses histogram alignment and multiplication for estimating equi-joins
+ *    - Calculates join size by summing counts from multiplied buckets
+ *    - Falls back to Cartesian product when no valid join columns are found
+ *    - Assumes independence between join columns when multiple predicates exist
+ * 
+ * 3. Group By:
+ *    - Estimates cardinality based on NDV (number of distinct values)
+ *    - Uses formula: GROUP BY cardinality = min(NDV, filtered_cardinality)
+ *    - Rescales histograms after grouping to match the estimated cardinality
+ * 
+ * 4. Multi-joins:
+ *    - Implemented as a series of binary joins
+ *    - First join: Uses direct histogram multiplication
+ *    - Subsequent joins: Works with already merged statistics
+ *    - IMPORTANT LIMITATION: After the first join, histogram-based estimation
+ *      becomes less accurate as the relationship between joined columns is lost
+ *    - Maintains tracking of all tables involved via original_tables
+ * 
+ * This estimator is best suited for:
+ * - Simple queries with selective filters
+ * - Single joins between base tables
+ * - Queries where the independence assumption is reasonable
+ * 
+ * Note that the accuracy decreases with:
+ * - Multi-way joins
+ * - Highly correlated columns
+ * - Complex filter predicates
+ */
+    struct M_EXPORT HistogramEstimator : CardinalityEstimatorCRTP<HistogramEstimator>
     {
-        struct ExperimentalDataModel : DataModel
+        struct HistogramDataModel : DataModel
         {
+            std::set<std::string> original_tables;
 
-            ExperimentalDataModel() = default;
+            HistogramDataModel() = default;
 
-            ExperimentalDataModel(const ExperimentalDataModel &other) = default; // Use default copy
+            HistogramDataModel(const HistogramDataModel &other) = default; // Use default copy
             void assign_to(Subproblem) override { /* nothing to be done */ }
             void set_cardinality(double cardinality) override { size = cardinality; }
             void set_stats(const TableStatistics &table_stats) { stats = table_stats; }
             TableStatistics get_stats() const { return stats; }
         };
 
-        ExperimentalEstimator() {}
-        ExperimentalEstimator(ThreadSafePooledString) {}
+        HistogramEstimator() {}
+        HistogramEstimator(ThreadSafePooledString) {}
 
         /*==================================================================================================================
          * Model calculation
@@ -581,8 +621,46 @@ namespace m
     };
 
     /**
-     * Selectivity-based estimator: applies selectivity formulas from dumb_card_est.md
-     */
+     * Selectivity-based cardinality estimator that applies simple statistical formulas
+     * for estimating result sizes of relational operations.
+     * 
+     * This estimator uses NDV (number of distinct values) and table sizes to calculate
+     * selectivity factors for filters and joins, without relying on detailed histograms.
+     * 
+     * 1. Filters:
+     *    - Uses fixed selectivity factors for standard predicates
+     *    - Equality predicate: 1/NDV selectivity
+     *    - Range predicate: standard selectivity factors (e.g., 1/3 for >, <, etc.)
+     *    - Assumes independence between predicates (multiplies individual selectivities)
+     *    - Uses statistics.selectivity values when available
+     * 
+     * 2. Joins:
+     *    - Estimates join size using the formula: (left_size * right_size) / max(NDV_L, NDV_R)
+     *    - For multi-column joins, multiplies selectivities of individual join conditions
+     *    - Falls back to Cartesian product when no join condition is found
+     *    - Uses original_tables tracking to identify tables involved
+     * 
+     * 3. Group By:
+     *    - Estimates output size based on distinct values in grouping columns
+     *    - For single column: Uses NDV of the column
+     *    - For multiple columns: Uses product of NDVs with adjustments
+     *    - Caps at input cardinality
+     * 
+     * 4. Multi-joins:
+     *    - Processes joins sequentially in the order determined by the optimizer
+     *    - Applies selectivity formula at each step
+     *    - Maintains original_tables tracking for accurate identification of tables
+     *    - Handles multi-way join queries without the histogram alignment issues
+     * 
+     * This estimator is computationally efficient and works well for:
+     * - Queries where the independence assumption holds
+     * - General-purpose estimation without detailed data profiles
+     * - Multi-way joins where histogram-based approaches become less accurate
+     * 
+     * The simplicity of this approach makes it robust for various workloads, though it
+     * may be less accurate than histogram-based approaches for highly skewed data or
+     * complex filter conditions on specificvalue ranges.
+    */
     struct M_EXPORT SelectivityEstimator : CardinalityEstimatorCRTP<SelectivityEstimator>
     {
     public:
@@ -639,5 +717,6 @@ namespace m
 
     private:
         void print(std::ostream &out) const override;
+        std::string extract_column_name_from_expression(const ast::Expr &expr) const;
     };
 }

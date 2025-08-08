@@ -65,7 +65,6 @@ namespace m
         void set_range(std::pair<double, double> new_range)
         {
             range = new_range;
-            set_cardinality(new_range.second); // Update cardinality with upper bound
         }
 
         void set_stats(const TableStatistics &table_stats)

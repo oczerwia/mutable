@@ -664,30 +664,97 @@ namespace m
         return result;
     }
 
+    /**
+     * Rescales all histograms to match a specified target cardinality.
+     * 
+     * @param target_cardinality The desired cardinality to scale all histograms to
+     * @return A new TableStatistics object with rescaled histograms
+     */
+    TableStatistics TableStatistics::rescale_histograms_to_cardinality(std::size_t target_cardinality) const
+    {
+        // Create a copy of the current statistics
+        TableStatistics result = *this;
+        
+        // If there are no histograms or target is 0, nothing to do
+        if (histograms.empty() || target_cardinality == 0) {
+            return result;
+        }
+        
+        // Scale each histogram directly to the target cardinality
+        for (auto &[col_name, hist] : result.histograms) {
+            if (!hist.is_valid() || hist.total_count == 0 || hist.total_count == target_cardinality) {
+                continue;  // Skip invalid or already-at-target histograms
+            }
+            
+            // Calculate scaling factor directly for this histogram
+            double hist_scale_factor = double(target_cardinality) / double(hist.total_count);
+            
+            // Scale non-null counts proportionally
+            std::size_t non_null = hist.total_count - hist.null_count;
+            std::size_t new_non_null = static_cast<std::size_t>(double(non_null) * hist_scale_factor);
+            
+            // Scale each bin proportionally
+            if (non_null > 0) {
+                double bin_scale = double(new_non_null) / double(non_null);
+                for (auto &bin : hist.bins) {
+                    bin = static_cast<std::size_t>(double(bin) * bin_scale);
+                }
+            }
+            
+            // Update total count while preserving null count
+            hist.total_count = new_non_null + hist.null_count;
+        }
+        
+        // Update the table row count to match the target cardinality
+        result.row_count = target_cardinality;
+        
+        // Update distinct counts differently depending on scaling direction
+        bool scaling_up = target_cardinality > row_count;
+        for (auto &[col_name, distinct_count] : result.distinct_counts) {
+            if (scaling_up) {
+                // When scaling up, conservatively increase NDV
+                // Scale by sqrt of the ratio to model diminishing new distinct values
+                double scale_ratio = sqrt(double(target_cardinality) / double(row_count));
+                distinct_count = std::min(target_cardinality, 
+                                        static_cast<std::size_t>(distinct_count * scale_ratio));
+            } else if (distinct_count > target_cardinality) {
+                // When scaling down, cap at new cardinality
+                distinct_count = target_cardinality;
+            }
+        }
+        
+        // Update selectivity values based on new cardinality and distinct counts
+        for (auto &[col_name, sel] : result.selectivity) {
+            if (result.distinct_counts.count(col_name) && result.row_count > 0) {
+                sel = double(result.distinct_counts.at(col_name)) / double(result.row_count);
+            }
+        }
+        
+        return result;
+    }
+
+    // TODO: This function also has to rescale every other histogram according to the card count 
     TableStatistics TableStatistics::filter_by_cnf(const cnf::CNF &cnf_condition) const
     {
-        TableStatistics result = *this; // Copy current statistics
+        TableStatistics result = *this; 
 
-        // Process each clause in the CNF
         for (const auto &clause : cnf_condition)
         {
-            // For now, only handle single-predicate clauses (no OR conditions)
             if (clause.size() != 1)
             {
-                continue; // Skip complex clauses for now
+                continue;
             }
 
             const auto &predicate = clause[0];
 
-            // Only handle non-negated binary expressions
             if (predicate.negative())
             {
-                continue; // Skip negated predicates for now
+                continue;
             }
 
             if (auto binary_expr = cast<const ast::BinaryExpr>(&predicate.expr()))
             {
-                // Extract left side (should be table.column)
+            
                 auto lhs = cast<const ast::Designator>(binary_expr->lhs.get());
                 if (!lhs || !lhs->has_table_name())
                 {
@@ -701,7 +768,7 @@ namespace m
                 auto hist_it = result.histograms.find(table_col);
                 if (hist_it == result.histograms.end())
                 {
-                    continue; // No histogram for this column
+                    continue;
                 }
 
                 // Extract right side (should be a constant value) - SIMPLE WAY
@@ -719,7 +786,7 @@ namespace m
                     }
                     catch (const std::exception &)
                     {
-                        continue; // Couldn't convert to number
+                        continue;
                     }
 
                     // Apply the appropriate filter based on operator - USE YOUR EXISTING METHODS
@@ -751,6 +818,19 @@ namespace m
             }
         }
 
+        std::size_t min_cardinality = std::numeric_limits<std::size_t>::max();
+        for (const auto &[col_name, hist] : result.histograms) {
+            if (hist.is_valid() && hist.total_count > 0 && hist.total_count < min_cardinality) {
+                min_cardinality = hist.total_count;
+            }
+        }
+        
+        // Only rescale if we found valid histograms
+        if (min_cardinality != std::numeric_limits<std::size_t>::max()) {
+            return result.rescale_histograms_to_cardinality(min_cardinality);
+        }
+        
+        // If no valid histograms found, return as-is
         return result;
     }
 
@@ -773,11 +853,8 @@ namespace m
             else
             {
                 // Fallback: assume high cardinality for non-numeric columns
-                estimated_groups *= std::min(row_count, std::size_t(1000));
+                estimated_groups *= row_count;
             }
-
-            // Cap at total row count
-            estimated_groups = std::min(estimated_groups, row_count);
         }
 
         return estimated_groups;

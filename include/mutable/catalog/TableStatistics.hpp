@@ -172,6 +172,8 @@ namespace m
         // Merge with another TableStatistics (for joins)
         TableStatistics merge_for_join(const TableStatistics &other) const;
 
+        TableStatistics rescale_histograms_to_cardinality(std::size_t target_cardinality) const;
+
         /**
          * Filter histograms based on CNF conditions
          * @param cnf_condition The CNF filter to apply

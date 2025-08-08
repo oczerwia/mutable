@@ -495,7 +495,6 @@ namespace m
                 }
             }
 
-            // Step 3: Update or add to storage
             for (const auto &new_graph : temp_graphs)
             {
                 bool found_existing = false;
@@ -522,7 +521,6 @@ namespace m
                                 std::cout << filter << " ";
                             }
                             std::cout << "}, cardinality=" << existing_graph.cardinality_;
-                            // Add range output
                             if (existing_graph.cardinality_range_.first >= 0.0)
                             {
                                 std::cout << ", range=[" << existing_graph.cardinality_range_.first

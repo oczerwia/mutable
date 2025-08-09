@@ -6,22 +6,33 @@ TODO / Next steps
 [x] done
 [ ] open
 
-Diese Woche: 
-    [x] Fix cardinality storage
-    [x] Make histogram run
-        [x] Change join size estimation
-        [x] Implement function to adjust histogram to new cardinality (Use independence assumption to reduce each bucket)
-    [ ] Extract estimated and extracted values
-    [ ] Start running on server
 
+Diese Woche (Mini-Plan: Mo 11 Aug → Fr 15 Aug):
 
-Nächste Woche:
-    [ ] LpBound
+[ ] Monday:
+  [ ] Decide CSV schema (query_id, operator_id, estimator_type, est_card, true_card, q_error, stage)
+  [ ] Implement CSV writing functions (append mode)
+  [ ] Test export with 1–2 queries locally
 
+[ ] Tuesday:
+  [ ] Run JOB-light subset (5 queries) with histogram, selectivity, cartesian product estimators
+  [ ] Store CSV outputs for all runs
+  [ ] Verify q-error calculation correctness
 
-[ ] Features
-    [ ] Util class for table names - names, columns, joined, etc.
-    [ ] Store intermediate cards
+[ ] Wednesday:
+  [ ] Debug any CSV or estimator issues
+  [ ] Run full JOB-light for histogram + selectivity
+  [ ] Store results locally with date-stamped filenames
+
+[ ] Thursday:
+  [ ] Write analysis script to compute mean/median q-error per estimator
+  [ ] Generate q-error distribution plot (histogram/log-scale)
+  [ ] (Optional) Implement intermediate error accumulation metric
+
+[ ] Friday:
+  [ ] Generate plots (q-error CDF, boxplot/log-scale per estimator)
+  [ ] Summarize observations in short text (baseline results: hist vs sel vs cartesian)
+  [ ] Archive code, CSVs, and plots in a dated folder
 
 
 [ ] Innovation

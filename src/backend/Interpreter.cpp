@@ -926,10 +926,6 @@ void Pipeline::operator()(const ScanOperator &op)
         op.add_processed_tuples(block_size);    // Input = what we read from storage
         op.add_emitted_tuples(block_size);      // Output = what we send to next operator
 
-        std::cout << "Scan: Read and emitted " << block_size << " tuples" << std::endl;
-        std::cout << "Scan: Total processed so far: " << op.get_processed_tuples() << std::endl;
-
-
         op.parent()->accept(*this);
     }
     if (i != num_rows) {
@@ -945,10 +941,6 @@ void Pipeline::operator()(const ScanOperator &op)
         // STATISTICS GENERATION FOR LAST PARTIAL BLOCK
         op.add_processed_tuples(remainder);     // Input = remaining tuples from storage
         op.add_emitted_tuples(remainder);       // Output = remaining tuples to next operator
-
-        std::cout << "Scan: Read and emitted final " << remainder << " tuples" << std::endl;
-        std::cout << "Scan: Total processed: " << op.get_processed_tuples() << std::endl;
-        std::cout << "Scan: Total emitted: " << op.get_emitted_tuples() << std::endl;
 
         op.parent()->accept(*this);
     }
@@ -1003,11 +995,6 @@ void Pipeline::operator()(const FilterOperator &op)
     std::size_t output_count = block_.size();
     op.add_emitted_tuples(output_count);
 
-    std::cout << "Filter: " << output_count << " tuples passed filter (filtered out: "
-              << (input_count - output_count) << ")" << std::endl;
-    std::cout << "Filter: Total processed so far: " << op.get_processed_tuples() << std::endl;
-    std::cout << "Filter: Total emitted so far: " << op.get_emitted_tuples() << std::endl;
-
 
     if (not block_.empty())
         op.parent()->accept(*this);
@@ -1043,12 +1030,6 @@ satisfied:;
     // Count output tuples (after filtering)
     std::size_t output_count = block_.size();
     op.add_emitted_tuples(output_count);
-
-    std::cout << "DisjunctiveFilter: " << output_count << " tuples passed filter (filtered out: "
-              << (input_count - output_count) << ")" << std::endl;
-    std::cout << "DisjunctiveFilter: Total processed so far: " << op.get_processed_tuples() << std::endl;
-    std::cout << "DisjunctiveFilter: Total emitted so far: " << op.get_emitted_tuples() << std::endl;
-
 
     if (not block_.empty())
         op.parent()->accept(*this);
@@ -1198,10 +1179,6 @@ void Pipeline::operator()(const JoinOperator &op)
                         std::size_t emitted_count = pipeline.block_.size();
                         data->emitted_tuples += emitted_count;
                         op.add_emitted_tuples(emitted_count);  // Add to operator counter
-
-                        std::cout << "NestedLoopsJoin: Emitting " << emitted_count << " tuples" << std::endl;
-                        std::cout << "NestedLoopsJoin: Total emitted so far: " << data->emitted_tuples << std::endl;
-                        std::cout << "NestedLoopsJoin: Total processed so far: " << op.get_processed_tuples() << std::endl;
                         pipeline.push(*op.parent());
                     }
 
@@ -1269,11 +1246,6 @@ void Pipeline::operator()(const ProjectionOperator &op)
     std::size_t output_count = pipeline.block_.size();
     op.add_emitted_tuples(output_count);
 
-    std::cout << "Projection: Emitted " << output_count << " tuples" << std::endl;
-    std::cout << "Projection: Total processed so far: " << op.get_processed_tuples() << std::endl;
-    std::cout << "Projection: Total emitted so far: " << op.get_emitted_tuples() << std::endl;
-
-
     pipeline.push(*op.parent());
 }
 
@@ -1304,13 +1276,6 @@ void Pipeline::operator()(const LimitOperator &op)
     // STATISTICS GENERATION Count output tuples (after limit filtering)
     std::size_t output_count = block_.size();
     op.add_emitted_tuples(output_count);
-
-    std::cout << "Limit: " << output_count << " tuples passed limit check (filtered out: "
-              << (input_count - output_count) << ")" << std::endl;
-    std::cout << "Limit: Total processed so far: " << op.get_processed_tuples() << std::endl;
-    std::cout << "Limit: Total emitted so far: " << op.get_emitted_tuples() << std::endl;
-
-
 
     if (not block_.empty())
         op.parent()->accept(*this);
@@ -1437,10 +1402,6 @@ void Pipeline::operator()(const GroupingOperator &op)
     // Count input tuples
     std::size_t input_count = block_.size();
     op.add_processed_tuples(input_count);
-
-    std::cout << "Grouping: Processing " << input_count << " input tuples" << std::endl;
-    std::cout << "Grouping: Current number of groups: " << groups.size() << std::endl;
-
 
     Tuple key(op.schema());
     for (auto &tuple : block_) {
@@ -1616,10 +1577,6 @@ void Interpreter::operator()(const JoinOperator &op)
 {
     if (op.predicate().is_equi()) {
         /* Perform simple hash join. */
-        std::cout << "=== STARTING HASH JOIN ===" << std::endl;
-        std::cout << "Build relation cardinality estimate: " << op.child(0)->info().estimated_cardinality << std::endl;
-        std::cout << "Probe relation cardinality estimate: " << op.child(1)->info().estimated_cardinality << std::endl;
-        std::cout << "Code: Interpreter:1478" << std::endl;
 
         auto data = new SimpleHashJoinData(op);
         op.data(data);
@@ -1629,12 +1586,8 @@ void Interpreter::operator()(const JoinOperator &op)
         if (data->ht.size() == 0) // no tuples produced
             return;
         data->is_probe_phase = true;
-        std::cout << "=== STARTING PROBE PHASE ===" << std::endl;
         op.child(1)->accept(*this); // probe HT with RHS
         op.print_intermediate_results();
-        if (data->emitted_tuples > 0) {
-            std::cout << "Total tuples emitted: " << data->emitted_tuples << std::endl;
-        }
     } else {
         /* Perform nested-loops join. */
         auto data = new NestedLoopsJoinData(op);
@@ -1677,19 +1630,11 @@ void Interpreter::operator()(const LimitOperator &op)
 
 void Interpreter::operator()(const GroupingOperator &op)
 {
-
-    std::cout << "=== STARTING GROUPING OPERATOR ===" << std::endl;
-    std::cout << "Group by attributes: " << op.group_by().size() << std::endl;
-    std::cout << "Aggregate functions: " << op.aggregates().size() << std::endl;
-
     auto &parent = *op.parent();
     auto data = new HashBasedGroupingData(op);
     op.data(data);
 
     op.child(0)->accept(*this);
-
-    std::cout << "=== GROUPING INPUT COMPLETE ===" << std::endl;
-    std::cout << "Total groups created: " << data->groups.size() << std::endl;
 
     // emit groups
     const auto num_groups = data->groups.size();
@@ -1709,10 +1654,6 @@ void Interpreter::operator()(const GroupingOperator &op)
         std::size_t block_size = data->pipeline.block_.capacity();
         total_emitted += block_size;
         op.add_emitted_tuples(block_size);
-
-        std::cout << "Grouping: Emitting " << block_size << " groups" << std::endl;
-
-
         data->pipeline.push(parent);
     }
     data->pipeline.block_.clear();
@@ -1732,9 +1673,6 @@ void Interpreter::operator()(const GroupingOperator &op)
 
 void Interpreter::operator()(const AggregationOperator &op)
 {
-    std::cout << "=== STARTING AGGREGATION OPERATOR ===" << std::endl;
-    std::cout << "Aggregate functions: " << op.aggregates().size() << std::endl;
-
 
     op.data(new AggregationData(op));
     auto data = as<AggregationData>(op.data());
@@ -1782,8 +1720,6 @@ void Interpreter::operator()(const AggregationOperator &op)
     }
     op.child(0)->accept(*this);
 
-    std::cout << "=== AGGREGATION INPUT COMPLETE ===" << std::endl;
-
     using std::swap;
     data->pipeline.block_.clear();
     data->pipeline.block_.mask(1UL);
@@ -1791,9 +1727,6 @@ void Interpreter::operator()(const AggregationOperator &op)
 
     // STATISTICS GENERATION Count the single output tuple
     op.add_emitted_tuples(1);
-
-    std::cout << "Aggregation: Emitting 1 aggregated result tuple" << std::endl;
-    std::cout << "=== AGGREGATION COMPLETED ===" << std::endl;
     op.print_operator_stats();
 
     data->pipeline.push(*op.parent());

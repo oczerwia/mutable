@@ -291,7 +291,6 @@ namespace m
             // Print summary statistics
             print_execution_summary(root);
 
-            std::cout << "====================================" << std::endl;
         }
 
         void print_execution_summary(const Operator &root) const
@@ -317,7 +316,6 @@ namespace m
                     operators_with_estimates++;
                 }
 
-                // CHECK IF IT'S A CONSUMER BEFORE ACCESSING children()
                 if (auto consumer = dynamic_cast<const Consumer *>(&op))
                 {
                     for (auto child : consumer->children())
@@ -348,14 +346,9 @@ namespace m
 
         void execute(const MatchBase &plan) const override
         {
-            std::cout << "=== STARTING PHYSICAL PLAN EXECUTION ===" << std::endl;
-
             (*const_cast<Interpreter *>(this))(plan.get_matched_root()); // use former visitor pattern on logical operators
-
-            std::cout << "=== PHYSICAL PLAN EXECUTION COMPLETE ===" << std::endl;
             collect_and_analyze_cardinality_stats(plan.get_matched_root());
 
-            // Store cardinality information
             CardinalityStorage::Get().extract_reduced_query_graphs_from_execution(plan.get_matched_root());
         }   
 

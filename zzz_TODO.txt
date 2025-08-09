@@ -84,3 +84,65 @@ Diese Woche (Mini-Plan: Mo 11 Aug → Fr 15 Aug):
     [ ] Conclusion
 
 
+
+
+
+#########
+INTERVIEW prep
+#########
+
+
+Week 1 (Aug 11–15) – Foundations & Light Start
+Daily:
+
+* 30 min LeetCode: Arrays, strings, hash maps
+* 15 min NebulaStream reading
+* 15 min STAR stories
+  End of Week: 3 STAR stories ready, 2–3 NebulaStream questions
+
+Week 2 (Aug 18–22) – Thesis Presentation Draft #1
+Daily:
+
+* 30 min LeetCode: Sliding window, sorting
+* 20 min DB fundamentals: Joins, indexing, execution strategies
+* 20 min Thesis slides: Outline, motivation, approach, current results
+  End of Week: Rough slide deck, 5-min thesis explanation without slides
+
+Week 3 (Aug 25–29) – Database Deep Dive
+Daily:
+
+* 30 min LeetCode: BFS/DFS, simple graphs
+* 30 min DB review: Transactions, ACID, isolation, cost models, cardinality estimation pitfalls
+* 10 min thesis elevator pitch
+  End of Week: DB review cheat sheet, polished resilience STAR story
+
+Week 4 (Sep 1–5) – Technical Integration
+Daily:
+
+* 30 min LeetCode: Mixed topics
+* 30 min Map DB concepts to thesis
+* 20 min Polish slides with baseline plots
+  End of Week: Presentation draft #2, rehearsed 15–20 min run-through
+
+Week 5 (Sep 8–12) – Mock Interview Rounds
+Daily:
+
+* 20 min LeetCode: Timed problems
+* 30 min Mock behavioral or DB questions (alternate days)
+* 20 min Presentation timing & Q\&A
+  End of Week: 1 full mock interview, fix identified gaps
+
+Week 6 (Sep 15–19) – Final Polish
+Daily:
+
+* 20 min LeetCode: Review common patterns
+* 20 min Presentation final polish
+* 20 min Q\&A practice
+  End of Week: Final deck + backup slides, STAR stories memorized
+
+Interview Week (Sep 22–26)
+
+* Light LeetCode warmups (1 problem/day)
+* Review NebulaStream notes + questions
+* 1–2 full timed presentation rehearsals
+* Good sleep, light workouts, low stress

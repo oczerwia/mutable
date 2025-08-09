@@ -9,8 +9,11 @@
             "args": [
                 "--plan-enumerator",
                 "GOO",
+                "--cardinality-estimator",
+                "CartesianProduct",
                 "--backend",
-                "Interpreter"
+                "Interpreter",
+                "zzz_micro_query.sql"
             ],
             "cwd": "${workspaceFolder}",
             "terminal": "integrated"

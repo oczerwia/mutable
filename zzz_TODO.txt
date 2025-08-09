@@ -4,13 +4,15 @@ TODO / Next steps
 [x] done
 [ ] open
 
+current problem: Es wird die subproblem maske genutzt um auf die operator zuzugreifen... muss nach einem weg suchen die operatoren einfacher zu extrahieren
 
 Hotfix:
 [ ] Cardinality storage
   [x] Collect group by data seperately
-  [ ] Propagate group by to all parent nodes (use filter as orientation)
+  [x] Propagate group by to all parent nodes (use filter as orientation)
   [ ] Collect filter data seperately
   [ ] Align actual (in collected x cardinality entries) with what the interpreter actually prints
+  [x] Introduce a counting index in the estimators to track the order in which they were called
 
 Refactoring:
   [ ] Split up functions in CardinalityStorage

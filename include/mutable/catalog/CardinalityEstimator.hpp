@@ -51,9 +51,10 @@ namespace m
         virtual void assign_to(Subproblem s) = 0;
         virtual void set_cardinality(double cardinality) = 0;
 
-        std::size_t size = 0;
+        std::size_t size = -1;
         std::pair<double, double> range = {-1.0, -1.0}; // -1 indicates unset
         TableStatistics stats;
+        std::set<std::string> original_tables;
 
         bool has_range() const
         {
@@ -298,7 +299,6 @@ namespace m
     {
         struct HistogramDataModel : DataModel
         {
-            std::set<std::string> original_tables;
 
             HistogramDataModel() = default;
 
@@ -665,7 +665,6 @@ namespace m
     public:
         struct SelectivityDataModel : DataModel
         {
-            std::set<std::string> original_tables;
             
 
             SelectivityDataModel() = default;
@@ -673,10 +672,11 @@ namespace m
             
             // Constructor for merged results from joins
             SelectivityDataModel(std::size_t sz, TableStatistics stats, std::set<std::string> tables)
-                : original_tables(std::move(tables))
             {
                 size = sz;
                 set_stats(stats);
+                original_tables = std::move(tables);
+
             }
             
             void assign_to(Subproblem) override { /* no-op */ }

@@ -84,15 +84,26 @@ std::unique_ptr<DataModel> CartesianProductEstimator::estimate_scan(const QueryG
     auto &BT = as<const BaseTable>(*G.sources()[idx]);
     auto model = std::make_unique<CartesianProductDataModel>();
     model->size = BT.table().store().num_rows();
+
+    auto stats_ptr = BT.table().statistics();
+    model->set_stats(*stats_ptr);
+    model->original_tables.insert(stats_ptr->table_name);
+    
     return model;
 }
 
 std::unique_ptr<DataModel>
-CartesianProductEstimator::estimate_filter(const QueryGraph &, const DataModel &_data, const cnf::CNF &) const
+CartesianProductEstimator::estimate_filter(const QueryGraph &G, const DataModel &_data, const cnf::CNF &filter) const
 {
     /* This model cannot estimate the effects of applying a filter. */
     auto &data = as<const CartesianProductDataModel>(_data);
-    return std::make_unique<CartesianProductDataModel>(data); // copy
+    auto model = std::make_unique<CartesianProductDataModel>(data);
+    
+    // Check if we have stored cardinality for this filter+table combination
+    if (CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *model)) {
+        return model;
+    }
+    return model;
 }
 
 std::unique_ptr<DataModel>

@@ -1,3 +1,6 @@
+// TODO
+// - Also store the estimated cardinality, so that we can just extract it later
+// - Use single method instead of has_stored_cardinality and has_stored_cardinality_range
 #pragma once
 
 #include <mutable/IR/PlanTable.hpp>
@@ -20,110 +23,113 @@
 
 namespace m
 {
+
+    enum class OperatorType
+    {
+        SCAN,
+        FILTER,
+        JOIN,
+        GROUP_BY,
+        PROJECTION,
+        LIMIT,
+        OTHER
+    };
+    inline std::ostream &operator<<(std::ostream &os, const OperatorType &type)
+    {
+        switch (type)
+        {
+        case OperatorType::SCAN:
+            os << "SCAN";
+            break;
+        case OperatorType::FILTER:
+            os << "FILTER";
+            break;
+        case OperatorType::JOIN:
+            os << "JOIN";
+            break;
+        case OperatorType::GROUP_BY:
+            os << "GROUP_BY";
+            break;
+        case OperatorType::PROJECTION:
+            os << "PROJECTION";
+            break;
+        case OperatorType::LIMIT:
+            os << "LIMIT";
+            break;
+        default:
+            os << "OTHER";
+            break;
+        }
+        return os;
+    }
+
     /**
      * @brief Complete data structure containing all relevant cardinality information for easy extraction
      */
     struct CardinalityData
     {
         // Cardinality information
-        double estimated_cardinality = -1.0; // Estimated by optimizer
-        double true_cardinality = -1.0;      // Actual from execution
+        double estimated_cardinality = -1.0;
+        double true_cardinality = -1.0;
+        std::pair<double, double> estimated_range = {-1.0, -1.0};
+        std::size_t operator_order = 0;
+        OperatorType operator_type = OperatorType::OTHER;
+        std::string operator_name;
 
-        std::pair<double,double> estimated_range = {-1.0, -1.0};
+        bool has_filter = false;
+        bool has_join = false;
+        bool has_grouping = false;
 
-        // Subproblem identification
-        Subproblem subproblem; // Complete bitmask
-
-        // Tables involved
-        std::vector<std::string> table_names; // Table names in this subproblem
-
-        // Operation information
-        bool has_filter = false; // Has filter operation
-        bool has_join = false;   // Has join operation
+        std::set<std::string> filter_strings;
+        std::set<std::string> table_names;
+        std::set<std::string> group_by_columns;
 
         // Performance metrics
-        double selectivity = -1.0;   // Computed selectivity if available
-        double error_percent = -1.0; // Estimation error percentage
+        double selectivity = -1.0;
+        double error_percent = -1.0;
 
-        // NEW: Store filters as strings for this specific subproblem
-        std::set<std::string> filter_strings;
-    };
-
-    struct ReducedQueryGraph
-
-    // add a function with which you can compare the reducedquerygraph with a set of table names or build the reduced query graph from the query graph in the beginning
-    // then iterate over the list of sets and return the cardinality if it is there.
-    {
     public:
-        // needed data
+        double get_cardinality() const { return true_cardinality; }
+        bool has_range() const { return estimated_range.first >= 0.0; }
+        void set_range(const std::pair<double, double> &range) { estimated_range = range; }
+        std::pair<double, double> get_range() const { return estimated_range; }
 
-        // CNF::filter;
-
-        std::set<std::string> source_names_;
-        std::set<std::string> source_filters_;
-        double cardinality_;
-
-        // NEW: Add range field
-        std::pair<double, double> cardinality_range_ = {-1.0, -1.0}; // -1 indicates unset
-
-        bool has_range() const
+        bool operator==(const CardinalityData &other) const
         {
-            return cardinality_range_.first >= 0.0; // Range exists if set to valid values
+            return operator_type == other.operator_type &&
+                   table_names == other.table_names &&
+                   has_grouping == other.has_grouping &&
+                   has_filter == other.has_filter &&
+                   filter_strings == other.filter_strings &&
+                   group_by_columns == other.group_by_columns;
+            // can turn into hash later?
         }
 
-        void set_range(const std::pair<double, double> &range)
-        {
-            cardinality_range_ = range;
-            // Keep point estimate (backward compatibility)
-            // cardinality_ already set separately
-        }
-
-        std::pair<double, double> get_range() const
-        {
-            return cardinality_range_;
-        }
-
-
-        bool operator==(const ReducedQueryGraph &other) const
-        {
-            return source_names_ == other.source_names_ &&
-                   source_filters_ == other.source_filters_;
-        }
-
-        bool operator!=(const ReducedQueryGraph &other) const
+        bool operator!=(const CardinalityData &other) const
         {
             return !(*this == other);
         }
-        double get_cardinality() const
-        {
-            return this->cardinality_;
-        }
     };
 
+
     /**
-     * @brief Singleton class that stores cardinality information from query execution
+     * @brief Singleton class that stores cardinality information during query execution
      */
     class CardinalityStorage
     {
     private:
-        // Efficiently store data with shared_ptr to avoid duplication
-        std::vector<std::shared_ptr<CardinalityData>> all_cardinality_data_;
-
-        // Map from subproblem to data index for fast lookup
-        std::unordered_map<Subproblem, std::size_t, SubproblemHash> subproblem_to_data_;
+        std::vector<std::shared_ptr<CardinalityData>> stored_cardinalities_;
 
         bool debug_output_ = true;
 
-        // NEW TRY
-        std::vector<std::string> current_table_names_;
-        std::set<std::string> current_filters_;
-        // List to store reduced query graphs for cardinality lookup
-        std::vector<ReducedQueryGraph> reduced_query_graphs_;
-        // when we find a cardinality, we store it on this variable
-        double cardinality_;
+        std::vector<std::shared_ptr<CardinalityData>> current_cardinality_data; // This is from the current query, will be reset after each query
 
-        // Storage for found range (similar to cardinality_)
-        std::pair<double, double> cardinality_range_ = {-1.0, -1.0};
+        std::vector<std::string> current_table_names;
+        std::set<std::string> current_filters_;
+        std::set<std::string> current_group_by_columns;
+
+        double cardinality_ = -1.0;
+        std::pair<double, double> estimated_range = {-1.0, -1.0};
 
     public:
         // Delete copy/move constructors and assignment operators
@@ -141,7 +147,6 @@ namespace m
             return instance;
         }
 
-
         /**
          * @brief Get the current table names
          *
@@ -149,7 +154,37 @@ namespace m
          */
         const std::vector<std::string> &get_current_table_names() const
         {
-            return current_table_names_;
+            return current_table_names;
+        }
+
+        /**
+         * @brief Set the current GROUP BY columns
+         *
+         * @param columns The columns used in the GROUP BY clause
+         */
+        void set_current_group_by_columns(const std::set<std::string> &columns)
+        {
+            current_group_by_columns = columns;
+
+            if (debug_output_)
+            {
+                std::cout << "Updated current GROUP BY columns: ";
+                for (const auto &col : current_group_by_columns)
+                {
+                    std::cout << col << " ";
+                }
+                std::cout << std::endl;
+            }
+        }
+
+        /**
+         * @brief Get the current GROUP BY columns
+         *
+         * @return const std::set<std::string>& Reference to current GROUP BY columns
+         */
+        const std::set<std::string> &get_current_group_by_columns() const
+        {
+            return current_group_by_columns;
         }
 
         /**
@@ -161,7 +196,6 @@ namespace m
         {
             std::vector<std::string> table_names;
 
-            // Traverse all data sources in the query graph
             const auto &sources = query_graph.sources();
             for (const auto &source_ptr : sources)
             {
@@ -174,12 +208,12 @@ namespace m
             }
 
             // Update the current table names vector
-            current_table_names_ = table_names;
+            current_table_names = table_names;
 
             if (debug_output_)
             {
                 std::cout << "Updated current table names from QueryGraph: ";
-                for (const auto &name : current_table_names_)
+                for (const auto &name : current_table_names)
                 {
                     std::cout << name << " ";
                 }
@@ -197,19 +231,27 @@ namespace m
             std::set<std::string> table_names;
             for (auto pos : involved_tables)
             {
-                if (pos < current_table_names_.size())
+                if (pos < current_table_names.size())
                 {
-                    table_names.insert(current_table_names_[pos]);
+                    table_names.insert(current_table_names[pos]);
                 }
             }
-            for (const auto &stored_query : reduced_query_graphs_)
+            for (const auto &stored_cardinality : stored_cardinalities_)
             {
-                if (stored_query.source_names_ == table_names)
+                if (stored_cardinality->table_names == table_names)
                 {
-                    if (stored_query.source_filters_ == current_filters_)
+                    if (stored_cardinality->filter_strings == current_filters_)
                     {
-                        cardinality_ = stored_query.get_cardinality();
-                        return true;
+                        bool group_by_matches =
+                            !stored_cardinality->has_grouping ||
+                            (stored_cardinality->has_grouping &&
+                             stored_cardinality->group_by_columns == current_group_by_columns);
+
+                        if (group_by_matches)
+                        {
+                            cardinality_ = stored_cardinality->get_cardinality();
+                            return true;
+                        }
                     }
                 }
             }
@@ -249,7 +291,22 @@ namespace m
             current_filters_ = filter_strings;
         }
 
-        /**
+        // TODO: Check if needed
+        void reset_traverse_counter_()
+        {
+            struct ResetHelper
+            {
+                static size_t &get_counter()
+                {
+                    static size_t counter = 0;
+                    return counter;
+                }
+            };
+            ResetHelper::get_counter() = 0;
+        }
+
+        /** TODO: Check if this is even needed
+         * We could use the switch statement to extract the attributes from the operator classes
          * @brief Extract metadata from operators (tables, filters, joins) - SIMPLIFIED
          *
          * @param op The operator to extract metadata from
@@ -257,140 +314,164 @@ namespace m
          */
         void extract_operator_metadata_(const Operator &op, CardinalityData &data)
         {
-            if (debug_output_)
-            {
-                std::cout << "  extract_operator_metadata_: subproblem = " << data.subproblem << std::endl;
-                std::cout << "  current_table_names_ size = " << current_table_names_.size() << std::endl;
-            }
 
-            // Extract table names directly from the subproblem bitmask using current_table_names_
-            for (unsigned pos = 0; pos < current_table_names_.size() && pos < 64; ++pos)
-            {
-                if (data.subproblem[pos])
-                {
-                    const std::string &table_name = current_table_names_[pos];
-
-                    if (debug_output_)
-                    {
-                        std::cout << "    Found table at pos " << pos << ": " << table_name << std::endl;
-                    }
-
-                    // Only add if not already present
-                    if (std::find(data.table_names.begin(), data.table_names.end(), table_name) == data.table_names.end())
-                    {
-                        data.table_names.push_back(table_name);
-                    }
-                }
-            }
-
-            // ONLY extract direct filters from FilterOperator (no complex propagation)
             if (auto filter_op = dynamic_cast<const FilterOperator *>(&op))
             {
+                data.operator_type = OperatorType::FILTER;
                 data.has_filter = true;
                 std::ostringstream ss;
                 ss << filter_op->filter();
                 std::string filter_str = ss.str();
                 data.filter_strings.insert(filter_str);
-
-                if (debug_output_)
-                {
-                    std::cout << "  Stored direct filter: " << filter_str << std::endl;
-                }
             }
-
-            // Mark join operations
-            if (auto join_op = dynamic_cast<const JoinOperator *>(&op))
+            else if (auto join_op = dynamic_cast<const JoinOperator *>(&op))
             {
+                data.operator_type = OperatorType::JOIN;
                 data.has_join = true;
             }
+            else if (auto group_op = dynamic_cast<const GroupingOperator *>(&op))
+            {
+                data.operator_type = OperatorType::GROUP_BY;
+
+                std::set<std::string> group_by_cols = extract_group_by_columns(group_op->group_by());
+                if (!group_by_cols.empty())
+                {
+                    data.group_by_columns = group_by_cols;
+                    data.has_grouping = true;
+                }
+            }
+            else if (auto scan_op = dynamic_cast<const ScanOperator *>(&op))
+            {
+                data.operator_type = OperatorType::SCAN;
+                // Get table name directly from the scan operator
+                const Store &store = scan_op->store();
+                const Table &table = store.table();
+                data.table_names.insert(std::string(*table.name()));
+            }
+            else if (dynamic_cast<const ProjectionOperator *>(&op))
+            {
+                data.operator_type = OperatorType::PROJECTION;
+            }
+            else if (dynamic_cast<const LimitOperator *>(&op))
+            {
+                data.operator_type = OperatorType::LIMIT;
+            }
+            else
+            {
+                data.operator_type = OperatorType::OTHER;
+            }
+
+            data.operator_name = typeid(op).name();
         }
 
         /**
-         * @brief Traverses the operator tree and collects cardinality information
+         * @brief Clear current GROUP BY columns (when processing a query without GROUP BY)
+         */
+        void clear_current_group_by_columns()
+        {
+            current_group_by_columns.clear();
+        }
+
+        /**
+         * @brief Extract column names from GROUP BY expressions
+         */
+        std::set<std::string> extract_group_by_columns(const std::vector<GroupingOperator::group_type> &groups)
+        {
+            std::set<std::string> group_by_cols;
+            for (const auto &[expr, alias] : groups)
+            {
+                const ast::Expr &expr_ref = expr.get();
+                if (auto designator = cast<const ast::Designator>(&expr_ref))
+                {
+                    std::string col_name;
+                    if (designator->has_table_name())
+                    {
+                        col_name = std::string(*designator->table_name.text) + "." +
+                                   std::string(*designator->attr_name.text);
+                    }
+                    else
+                    {
+                        col_name = std::string(*designator->attr_name.text);
+                    }
+                    group_by_cols.insert(col_name);
+                }
+            }
+            return group_by_cols;
+        }
+
+        /**
+         * @brief Traverses the operator tree DFS and collects cardinality information
          *
          * @param op The current operator being processed
+         *
+         * DFS is used so that we can propagate filter, group by, ... to parent nodes
          */
-        void traverse_operator_tree_(const Operator &op)
+        std::shared_ptr<CardinalityData> traverse_operator_tree_(const Operator &op)
         {
-            if (debug_output_)
-            {
-                std::cout << "Processing operator: " << typeid(op).name() << std::endl;
-            }
+            static size_t current_order = 0;
 
-            if (op.has_info())
-            {
-                const Subproblem &subproblem = op.info().subproblem;
-
-                // Create or find the cardinality data for this subproblem
-                std::shared_ptr<CardinalityData> data;
-                auto it = subproblem_to_data_.find(subproblem);
-
-                if (it == subproblem_to_data_.end())
-                {
-                    // Create new data entry
-                    data = std::make_shared<CardinalityData>();
-                    data->subproblem = subproblem;
-
-                    // Add to our collections
-                    subproblem_to_data_[subproblem] = all_cardinality_data_.size();
-                    all_cardinality_data_.push_back(data);
-                }
-                else
-                {
-                    // Use existing entry
-                    data = all_cardinality_data_[it->second];
-                }
-
-                // Update cardinality information
-                if (op.has_info() && op.info().estimated_cardinality > 0)
-                {
-                    data->estimated_cardinality = op.info().estimated_cardinality;
-
-                    if (op.info().estimated_range.first >= 0.0)
-                    {
-                        data->estimated_range = op.info().estimated_range;
-                    }
-                }
-                data->true_cardinality = op.get_emitted_tuples();
-
-                // Calculate error percentage if both values are available
-                if (data->estimated_cardinality > 0 && data->true_cardinality > 0)
-                {
-                    data->error_percent = std::abs(data->estimated_cardinality - data->true_cardinality) /
-                                          data->true_cardinality * 100.0;
-                }
-
-                // Calculate selectivity if processed count is available
-                size_t processed = op.get_processed_tuples();
-                if (processed > 0)
-                {
-                    data->selectivity = static_cast<double>(data->true_cardinality) / processed;
-                }
-
-                // Extract metadata from operator
-                extract_operator_metadata_(op, *data);
-            }
-
-            // Recursively traverse children
+            // DFS
+            std::vector<std::shared_ptr<CardinalityData>> children = {};
             if (auto consumer = dynamic_cast<const Consumer *>(&op))
             {
                 for (auto child : consumer->children())
                 {
-                    traverse_operator_tree_(*child);
+                    auto informed_child = traverse_operator_tree_(*child);
+                    children.push_back(informed_child);
                 }
             }
+
+            std::shared_ptr<CardinalityData> data = std::make_shared<CardinalityData>();
+            data->operator_order = current_order++;
+
+            if (op.has_info())
+            {
+                extract_operator_metadata_(op, *data);
+                data->estimated_cardinality = op.info().estimated_cardinality;
+                data->estimated_range = op.info().estimated_range;
+            }
+
+            data->true_cardinality = op.get_emitted_tuples();
+
+            if (!children.empty())
+            {
+                for (const auto child : children)
+                {
+                    if (child->has_grouping)
+                    {
+                        data->has_grouping = true;
+                        data->group_by_columns.insert(
+                            child->group_by_columns.begin(),
+                            child->group_by_columns.end());
+                    }
+                    if (child->has_filter)
+                    {
+                        data->has_filter = true;
+                        data->filter_strings.insert(
+                            child->filter_strings.begin(),
+                            child->filter_strings.end());
+                    }
+                    if (child->has_join)
+                    {
+                        data->has_join = true; // Not really needed
+                    }
+                    data->table_names.insert(
+                        child->table_names.begin(),
+                        child->table_names.end());
+                }
+            }
+
+            current_cardinality_data.push_back(data);
+            return data;
         }
 
         void map_true_cardinalities_to_logical_plan_(const Operator &root)
         {
-            if (debug_output_)
-            {
-                std::cout << "Starting to map true cardinalities to logical plan..." << std::endl;
-            }
 
             // Clear previous data
-            all_cardinality_data_.clear();
-            subproblem_to_data_.clear();
+            current_cardinality_data.clear();
+
+            reset_traverse_counter_();
 
             // Traverse and collect cardinalities
             traverse_operator_tree_(root);
@@ -398,16 +479,18 @@ namespace m
             // Debug output
             if (debug_output_)
             {
-                std::cout << "\nCollected " << all_cardinality_data_.size() << " cardinality entries." << std::endl;
-                for (const auto &data : all_cardinality_data_)
+                std::cout << "\nCollected " << current_cardinality_data.size() << " cardinality entries." << std::endl;
+                for (const auto &data : current_cardinality_data)
                 {
-                    std::cout << "  Subproblem: estimated=" << data->estimated_cardinality;
+                    std::cout << "  Subproblem: " << "operator=" << data->operator_type
+                              << ", order=" << data->operator_order << ", ";
+                    std::cout << "estimated=" << data->estimated_cardinality;
                     if (data->estimated_range.first >= 0.0)
                     {
-                        std::cout << ", range_estimated=[" << data->estimated_range.first 
-                                << "-" << data->estimated_range.second << "]";
+                        std::cout << ", range_estimated=[" << data->estimated_range.first
+                                  << "-" << data->estimated_range.second << "]";
                     }
-                    
+
                     std::cout << ", actual=" << data->true_cardinality << std::endl;
 
                     std::cout << "    Tables: ";
@@ -416,115 +499,118 @@ namespace m
                         std::cout << name << " ";
                     }
                     std::cout << std::endl;
+
+                    if (data->has_grouping)
+                    {
+                        std::cout << "    GROUP BY columns: ";
+                        for (const auto &col : data->group_by_columns)
+                        {
+                            std::cout << col << " ";
+                        }
+                        std::cout << std::endl;
+                    }
+                    if (data->has_filter) {
+                        std::cout << "    Filter conditions: ";
+                        for (const auto &filter : data->filter_strings) {
+                            std::cout << filter << " ";
+                        }
+                        std::cout << std::endl;
+                    }
                 }
             }
         }
 
         /**
+         * TODO: Extremely confusing naming conventions
          * @brief Extract true cardinalities and populate reduced query graphs
          *
          * @param root The root operator of the executed physical plan
          */
-        void extract_reduced_query_graphs_from_execution(const Operator &root)
+        void extract_cardinalities_from_execution(const Operator &root)
         {
-            if (debug_output_)
-            {
-                std::cout << "Extracting reduced query graphs from execution..." << std::endl;
-            }
 
-            // First, run the new cardinality extraction
             map_true_cardinalities_to_logical_plan_(root);
 
-            // Step 1: Create temporary vector of all new reduced query graphs
-            std::vector<ReducedQueryGraph> temp_graphs;
+            std::vector<CardinalityData> temp_cardinalities;
 
-            for (const auto &cardinality_data : all_cardinality_data_)
+            for (const auto &cardinality_data : current_cardinality_data)
             {
                 if (cardinality_data->true_cardinality > 0)
                 {
-                    ReducedQueryGraph new_graph;
+                                        
+                    CardinalityData new_cardinality;
 
-                    // Set tables
-                    for (const auto &table_name : cardinality_data->table_names)
-                    {
-                        new_graph.source_names_.insert(table_name);
-                    }
 
-                    // Set ONLY direct filters from this cardinality_data
+                    new_cardinality.table_names.insert(cardinality_data->table_names.begin(),
+                                                        cardinality_data->table_names.end());
+
+
                     for (const auto &filter_str : cardinality_data->filter_strings)
                     {
-                        new_graph.source_filters_.insert(filter_str);
+                        new_cardinality.filter_strings.insert(filter_str);
                     }
-
-                    new_graph.cardinality_ = cardinality_data->true_cardinality;
-                    if (cardinality_data->estimated_range.first >= 0.0)
-                        new_graph.set_range(cardinality_data->estimated_range);
-                    temp_graphs.push_back(new_graph);
-                }
-            }
-
-            // Step 2: Propagate filters to multi-table entries
-            for (auto &graph : temp_graphs)
-            {
-                if (graph.source_names_.size() > 1) // Multi-table graphs
-                {
-                    // Check each table in this graph
-                    for (const auto &table_name : graph.source_names_)
+                    if (cardinality_data->has_grouping)
                     {
-                        // Look through all single-table graphs for filters that apply to this table
-                        for (const auto &single_graph : temp_graphs)
-                        {
-                            if (single_graph.source_names_.size() == 1 &&
-                                single_graph.source_names_.count(table_name) > 0 &&
-                                !single_graph.source_filters_.empty())
-                            {
-                                // Add all filters from this single-table graph
-                                for (const auto &filter_str : single_graph.source_filters_)
-                                {
-                                    graph.source_filters_.insert(filter_str);
-
-                                    if (debug_output_)
-                                    {
-                                        std::cout << "  Propagated filter '" << filter_str
-                                                  << "' to multi-table graph containing " << table_name << std::endl;
-                                    }
-                                }
-                            }
-                        }
+                        new_cardinality.group_by_columns = cardinality_data->group_by_columns;
+                        new_cardinality.has_grouping = true;
                     }
+
+                    new_cardinality.operator_type = cardinality_data->operator_type;
+                    new_cardinality.operator_name = cardinality_data->operator_name;
+                    new_cardinality.operator_order = cardinality_data->operator_order;
+
+                    new_cardinality.true_cardinality = cardinality_data->true_cardinality;
+                    new_cardinality.set_range(cardinality_data->estimated_range);
+
+                    temp_cardinalities.push_back(new_cardinality);
                 }
             }
 
-            for (const auto &new_graph : temp_graphs)
+            for (const CardinalityData &new_cardinality : temp_cardinalities)
             {
                 bool found_existing = false;
-                for (auto &existing_graph : reduced_query_graphs_)
+                for (std::shared_ptr<CardinalityData> &existing_cardinality : stored_cardinalities_)
                 {
-                    if (existing_graph.source_names_ == new_graph.source_names_ &&
-                        existing_graph.source_filters_ == new_graph.source_filters_)
+                    if (existing_cardinality->operator_type == new_cardinality.operator_type &&
+                        existing_cardinality->table_names == new_cardinality.table_names &&
+                        existing_cardinality->filter_strings == new_cardinality.filter_strings &&
+                        existing_cardinality->has_grouping == new_cardinality.has_grouping &&
+                        (!existing_cardinality->has_grouping || existing_cardinality->group_by_columns == new_cardinality.group_by_columns))
                     {
-                        existing_graph.cardinality_ = new_graph.cardinality_;
-                        if (existing_graph.cardinality_range_.first >= 0.0){
-                            existing_graph.cardinality_range_ = new_graph.cardinality_range_;
-                        }
+                        existing_cardinality->true_cardinality = new_cardinality.true_cardinality;
+                        existing_cardinality->estimated_range = new_cardinality.estimated_range;
+                        existing_cardinality->group_by_columns = new_cardinality.group_by_columns;
                         found_existing = true;
+
                         if (debug_output_)
                         {
-                            std::cout << "  Updated existing ReducedQueryGraph: tables={";
-                            for (const auto &table : existing_graph.source_names_)
+                            std::cout << "  Updated existing CardinalityData: tables={";
+                            for (const auto &table : existing_cardinality->table_names)
                             {
                                 std::cout << table << " ";
                             }
-                            std::cout << "}, filters={";
-                            for (const auto &filter : existing_graph.source_filters_)
+                            std::cout << "} Operator type: " << existing_cardinality->operator_type << ", filters={";
+                            for (const auto &filter : existing_cardinality->filter_strings)
                             {
                                 std::cout << filter << " ";
                             }
-                            std::cout << "}, cardinality=" << existing_graph.cardinality_;
-                            if (existing_graph.cardinality_range_.first >= 0.0)
+                            std::cout << "}";
+
+                            if (existing_cardinality->has_grouping && !existing_cardinality->group_by_columns.empty())
                             {
-                                std::cout << ", range=[" << existing_graph.cardinality_range_.first
-                                        << "-" << existing_graph.cardinality_range_.second << "]";
+                                std::cout << ", group_by={";
+                                for (const auto &col : existing_cardinality->group_by_columns)
+                                {
+                                    std::cout << col << " ";
+                                }
+                                std::cout << "}";
+                            }
+
+                            std::cout << ", cardinality=" << existing_cardinality->true_cardinality;
+                            if (new_cardinality.has_range())
+                            {
+                                std::cout << ", range=[" << existing_cardinality->estimated_range.first
+                                          << "-" << existing_cardinality->estimated_range.second << "]";
                             }
                             std::cout << std::endl;
                         }
@@ -532,98 +618,99 @@ namespace m
                     }
                 }
 
-                if (!found_existing)
+                if (!found_existing && new_cardinality.operator_type != OperatorType::OTHER)
                 {
-                    reduced_query_graphs_.push_back(new_graph);
+                    stored_cardinalities_.push_back(std::make_shared<CardinalityData>(new_cardinality));
 
                     if (debug_output_)
                     {
-                        std::cout << "  Added new ReducedQueryGraph: tables={";
-                        for (const auto &table : new_graph.source_names_)
+                        std::cout << "  Added new CardinalityData: tables={";
+                        for (const auto &table : new_cardinality.table_names)
                         {
                             std::cout << table << " ";
                         }
-                        std::cout << "}, filters={";
-                        for (const auto &filter : new_graph.source_filters_)
+                        std::cout << "} Operator type: " << new_cardinality.operator_type << ", filters={";
+                        for (const auto &filter : new_cardinality.filter_strings)
                         {
                             std::cout << filter << " ";
                         }
-                        std::cout << "}, cardinality=" << new_graph.cardinality_ << std::endl;
+                        std::cout << "}";
+
+                        if (new_cardinality.has_grouping && !new_cardinality.group_by_columns.empty())
+                        {
+                            std::cout << ", group_by={";
+                            for (const auto &col : new_cardinality.group_by_columns)
+                            {
+                                std::cout << col << " ";
+                            }
+                            std::cout << "}";
+                        }
+
+                        std::cout << ", cardinality=" << new_cardinality.true_cardinality;
+                        if (new_cardinality.has_range())
+                        {
+                            std::cout << ", range=[" << new_cardinality.estimated_range.first
+                                      << "-" << new_cardinality.estimated_range.second << "]";
+                        }
+                        std::cout << std::endl;
                     }
                 }
-            }
-
-            if (debug_output_)
-            {
-                std::cout << "Total ReducedQueryGraphs in storage: " << reduced_query_graphs_.size() << std::endl;
             }
         }
 
-        bool has_stored_cardinality_range(SmallBitset involved_tables)
+        /**
+         * TODO: Might be useless, currently used in the group by estimator, better to change later
+         * TODO: Can change by storing each operator storage seperatly and each iterator only accesses these instead
+         * @brief Check for stored GROUP BY cardinality and update the output model
+         *
+         * @param G the QueryGraph (needed for compatibility with other methods)
+         * @param data_model the input data model containing table information
+         * @param groups the GROUP BY expressions
+         * @param output_model the output model to update with cardinality
+         * @return true if a stored cardinality was found and applied
+         */
+        bool apply_stored_grouping_cardinality(
+            const QueryGraph &G,
+            const DataModel &data_model,
+            const std::vector<CardinalityEstimator::group_type> &groups,
+            DataModel &output_model)
         {
-            // Reuse existing logic to find the correct ReducedQueryGraph
-            if (has_stored_cardinality(involved_tables))
-            {
-                // Find the graph we just matched in has_stored_cardinality
-                std::set<std::string> table_names;
-                for (auto pos : involved_tables)
-                {
-                    if (pos < current_table_names_.size())
-                    {
-                        table_names.insert(current_table_names_[pos]);
-                    }
-                }
+            // Extract GROUP BY columns using our helper method
+            std::set<std::string> group_by_cols = extract_group_by_columns(groups);
 
-                for (const auto &stored_query : reduced_query_graphs_)
+            // Set current GROUP BY columns
+            set_current_group_by_columns(group_by_cols);
+
+            // Get table names directly from the data model
+            const std::set<std::string> &table_names = data_model.original_tables;
+
+            // Check stored cardinality directly using table names
+            for (const auto &stored_cardinality : stored_cardinalities_)
+            {
+                if (stored_cardinality->table_names == table_names &&
+                    stored_cardinality->filter_strings == current_filters_)
                 {
-                    if (stored_query.source_names_ == table_names &&
-                        stored_query.source_filters_ == current_filters_)
+                    bool group_by_matches =
+                        !stored_cardinality->has_grouping ||
+                        (stored_cardinality->has_grouping &&
+                         stored_cardinality->group_by_columns == current_group_by_columns);
+
+                    if (group_by_matches)
                     {
-                        if (stored_query.has_range())
+                        output_model.set_cardinality(stored_cardinality->get_cardinality());
+                        if (stored_cardinality->has_range())
                         {
-                            cardinality_range_ = stored_query.get_range();
-                            return true;
+                            output_model.set_range(stored_cardinality->get_range());
                         }
-                        return false;
+                        return true;
                     }
                 }
             }
+
             return false;
         }
 
-        std::pair<double, double> get_cardinality_range() const
-        {
-            return cardinality_range_;
-        }
-
-        void store_cardinality_range(const std::set<std::string> &tables,
-                                     const std::pair<double, double> &range,
-                                     double true_cardinality)
-        {
-            // Find or create the ReducedQueryGraph
-            for (auto &graph : reduced_query_graphs_)
-            {
-                if (graph.source_names_ == tables &&
-                    graph.source_filters_ == current_filters_)
-                {
-                    // Update existing graph
-                    graph.cardinality_ = true_cardinality;
-                    graph.set_range(range);
-                    return;
-                }
-            }
-
-            // Create new graph if not found
-            ReducedQueryGraph new_graph;
-            new_graph.source_names_ = tables;
-            new_graph.source_filters_ = current_filters_;
-            new_graph.cardinality_ = true_cardinality;
-            new_graph.set_range(range);
-            reduced_query_graphs_.push_back(new_graph);
-        }
-
     private:
-        // Add default constructor
         CardinalityStorage() = default;
     };
 } // namespace m

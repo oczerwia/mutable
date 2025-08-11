@@ -290,7 +290,6 @@ namespace m
 
             // Print summary statistics
             print_execution_summary(root);
-
         }
 
         void print_execution_summary(const Operator &root) const
@@ -349,8 +348,8 @@ namespace m
             (*const_cast<Interpreter *>(this))(plan.get_matched_root()); // use former visitor pattern on logical operators
             collect_and_analyze_cardinality_stats(plan.get_matched_root());
 
-            CardinalityStorage::Get().extract_reduced_query_graphs_from_execution(plan.get_matched_root());
-        }   
+            CardinalityStorage::Get().extract_cardinalities_from_execution(plan.get_matched_root());
+        }
 
         using ConstOperatorVisitor::operator();
 #define DECLARE(CLASS) void operator()(Const<CLASS> &op) override;

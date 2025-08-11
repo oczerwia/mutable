@@ -92,18 +92,21 @@ void m::process_stream(std::istream &in, const char *filename, Diagnostic diag)
             std::cout.flush();
             timer.clear();
         }
-        if (C.has_database_in_use()) {
-        auto& db = C.get_database_in_use();
-        for (auto it = db.begin_tables(); it != db.end_tables(); ++it) {
-            auto& table = *it->second;
-            if (auto* stats = table.statistics()) {
-                stats->compute(table);            
+        if (C.has_database_in_use())
+        {
+            auto &db = C.get_database_in_use();
+            for (auto it = db.begin_tables(); it != db.end_tables(); ++it)
+            {
+                auto &table = *it->second;
+                if (auto *stats = table.statistics())
+                {
+                    stats->compute(table);
+                }
             }
         }
-    }
-    
-    std::cout.flush();
-    std::cerr.flush();
+
+        std::cout.flush();
+        std::cerr.flush();
     }
 }
 
@@ -216,7 +219,7 @@ void m::execute_statement(Diagnostic &diag, const ast::Stmt &stmt, const bool is
             M_TIME_EXPR(backend->execute(*physical_plan), "Execute query", timer);
         // STORE CARDINALITIES
         CardinalityStorage::Get().map_true_cardinalities_to_logical_plan_(physical_plan->get_matched_root());
-        CardinalityStorage::Get().extract_reduced_query_graphs_from_execution(physical_plan->get_matched_root());
+        CardinalityStorage::Get().extract_cardinalities_from_execution(physical_plan->get_matched_root());
     }
     else if (auto I = cast<const ast::InsertStmt>(&stmt))
     {
@@ -332,9 +335,8 @@ void m::execute_statement(Diagnostic &diag, const ast::Stmt &stmt, const bool is
         cfg.has_header = S->has_header;
         cfg.skip_header = S->skip_header;
 
-
-        std::cout << "\n\n\n\n\n\n\n\n\nWARNING: load_from_DSV called\n\n\n\n\n\n\n\n\n" << std::endl;
-
+        std::cout << "\n\n\n\n\n\n\n\n\nWARNING: load_from_DSV called\n\n\n\n\n\n\n\n\n"
+                  << std::endl;
 
         try
         {
@@ -357,14 +359,15 @@ void m::execute_statement(Diagnostic &diag, const ast::Stmt &stmt, const bool is
                 auto *stats = T.statistics();
                 stats->compute(T);
                 std::cout << "Statistics computed in mutable.cpp. Found " << stats->selectivity.size() << " columns." << std::endl;
-                for (const auto& [col, sel] : stats->selectivity) {
+                for (const auto &[col, sel] : stats->selectivity)
+                {
                     std::cout << "Selectivity for column '" << col << "': " << sel << "\n";
                 }
-                for (const auto& [col, hist] : stats->histograms) {
+                for (const auto &[col, hist] : stats->histograms)
+                {
                     std::cout << "Histogram for column '" << col << "': " << hist.bins.size() << " bins, ";
                     std::cout << "range [" << hist.min << ", " << hist.max << "]\n";
                 }
-                
             }
         }
         catch (m::invalid_argument e)
@@ -396,7 +399,8 @@ void m::execute_instruction(Diagnostic &diag, const Instruction &instruction)
 
     try
     {
-        std::cout << "\n\n\n\n\n\n\n\n\nWARNING:execute_instruction() called \n\n\n\n\n\n\n\n\n" << std::endl;
+        std::cout << "\n\n\n\n\n\n\n\n\nWARNING:execute_instruction() called \n\n\n\n\n\n\n\n\n"
+                  << std::endl;
 
         auto I = C.create_instruction(instruction.name, instruction.args);
         I->execute(diag);
@@ -480,7 +484,8 @@ void m::load_from_CSV(Diagnostic &diag, Table &table, const std::filesystem::pat
     cfg.skip_header = skip_header;
     DSVReader R(table, std::move(cfg), diag);
 
-    std::cout << "\n\n\n\n\n\n\n\n\nWARNING: load_from_CSV called\n\n\n\n\n\n\n\n\n" << std::endl;
+    std::cout << "\n\n\n\n\n\n\n\n\nWARNING: load_from_CSV called\n\n\n\n\n\n\n\n\n"
+              << std::endl;
 
     errno = 0;
     std::ifstream file(path);
@@ -499,10 +504,12 @@ void m::load_from_CSV(Diagnostic &diag, Table &table, const std::filesystem::pat
     if (diag.num_errors() != 0)
         throw runtime_error("error while reading CSV file");
 
-    if (auto *stats = table.statistics()) {
+    if (auto *stats = table.statistics())
+    {
         stats->compute(table);
     }
-    for (const auto& [col, sel] : table.statistics()->selectivity) {
+    for (const auto &[col, sel] : table.statistics()->selectivity)
+    {
         std::cout << "Selectivity for column '" << col << "': " << sel << "\n";
     }
 }

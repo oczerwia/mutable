@@ -4,28 +4,12 @@ TODO / Next steps
 [x] done
 [ ] open
 
-current problem: Es wird die subproblem maske genutzt um auf die operator zuzugreifen... muss nach einem weg suchen die operatoren einfacher zu extrahieren
-
-Hotfix:
-[ ] Cardinality storage
-  [x] Collect group by data seperately
-  [x] Propagate group by to all parent nodes (use filter as orientation)
-  [ ] Collect filter data seperately
-  [ ] Align actual (in collected x cardinality entries) with what the interpreter actually prints
-  [x] Introduce a counting index in the estimators to track the order in which they were called
-
 Refactoring:
   [ ] Split up functions in CardinalityStorage
-    [ ] Fuse CardinalityData with ReducedQueryGraph (carddata has no added bonus)
-    [ ] Operator specific extraction functions
     [ ] Matching based on operators first
     [ ] Centralize debug printing functions into a seperate file
     [ ] Centralize string parsing of table / column names
     [ ] Move cardinality storage retrieval into the estimation code (try to remove from join ordering)
-    [ ] Is dynamic type checking the best way to go? -> Cant we infer about the objects type in another way?
-
-Speedups:
-[ ] Existing card comparisons: Think about a tree like datastructure
 
 
 Diese Woche (Mini-Plan: Mo 11 Aug → Fr 15 Aug):

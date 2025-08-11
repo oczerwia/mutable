@@ -4,20 +4,26 @@ TODO / Next steps
 [x] done
 [ ] open
 
+small feature:
+[ ] Add a function that gives the option to flush the complete card storage -> Removes the need for ingesting the data all the time
+[ ] Check 'extreme' query cases
+
 Refactoring:
+  [ ] Move cardstorage into a cpp file
+  [ ] Move cardinality storage retrieval (for join) into estimator
   [ ] Split up functions in CardinalityStorage
     [ ] Matching based on operators first
     [ ] Centralize debug printing functions into a seperate file
     [ ] Centralize string parsing of table / column names
-    [ ] Move cardinality storage retrieval into the estimation code (try to remove from join ordering)
+    [ ] 
 
 
 Diese Woche (Mini-Plan: Mo 11 Aug → Fr 15 Aug):
 
-[ ] Monday:
-  [ ] Decide CSV schema (query_id, operator_id, estimator_type, est_card, true_card, q_error, stage)
-  [ ] Implement CSV writing functions (append mode)
-  [ ] Test export with 1–2 queries locally
+[x] Monday:
+  [x] Decide CSV schema (query_id, operator_id, estimator_type, est_card, true_card, q_error, stage)
+  [x] Implement CSV writing functions (append mode)
+  [x] Test export with 1–2 queries locally
 
 [ ] Tuesday:
   [ ] Run JOB-light subset (5 queries) with histogram, selectivity, cartesian product estimators

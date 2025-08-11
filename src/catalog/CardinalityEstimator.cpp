@@ -107,12 +107,17 @@ CartesianProductEstimator::estimate_limit(const QueryGraph &, const DataModel &_
 }
 
 std::unique_ptr<DataModel>
-CartesianProductEstimator::estimate_grouping(const QueryGraph &, const DataModel &_data,
-                                             const std::vector<group_type> &) const
+CartesianProductEstimator::estimate_grouping(const QueryGraph &G, const DataModel &_data,
+                                             const std::vector<group_type> &groups) const
 {
     auto &data = as<const CartesianProductDataModel>(_data);
     auto model = std::make_unique<CartesianProductDataModel>();
-    model->size = data.size; // this model cannot estimate the effects of grouping
+
+    if (CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *model)) {
+        return model;
+    }
+
+    model->size = data.size;
     return model;
 }
 
@@ -1556,7 +1561,6 @@ SelectivityEstimator::estimate_grouping(const QueryGraph &G, const DataModel &da
         m->size = 1;
         return m;
     }
-    
     auto stats = m->get_stats();
     double prod = 1.0;
     

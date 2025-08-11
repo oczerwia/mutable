@@ -118,6 +118,9 @@ namespace m
     class CardinalityStorage
     {
     private:
+
+        inline static size_t query_counter_ = 0;
+
         std::vector<std::shared_ptr<CardinalityData>> stored_cardinalities_;
 
         bool debug_output_ = true;
@@ -291,19 +294,17 @@ namespace m
             current_filters_ = filter_strings;
         }
 
-        // TODO: Check if needed
-        void reset_traverse_counter_()
-        {
-            struct ResetHelper
-            {
-                static size_t &get_counter()
-                {
-                    static size_t counter = 0;
-                    return counter;
-                }
-            };
-            ResetHelper::get_counter() = 0;
+        struct OperatorCounter {
+            static size_t& value() {
+                static size_t counter = 0;
+                return counter;
+            }
+        };
+
+        void reset_traverse_counter_() {
+            OperatorCounter::value() = 0;
         }
+
 
         /** TODO: Check if this is even needed
          * We could use the switch statement to extract the attributes from the operator classes
@@ -408,7 +409,7 @@ namespace m
          */
         std::shared_ptr<CardinalityData> traverse_operator_tree_(const Operator &op)
         {
-            static size_t current_order = 0;
+            size_t &current_order = OperatorCounter::value();
 
             // DFS
             std::vector<std::shared_ptr<CardinalityData>> children = {};
@@ -529,6 +530,8 @@ namespace m
         void extract_cardinalities_from_execution(const Operator &root)
         {
 
+            query_counter_++; // New select statement
+
             map_true_cardinalities_to_logical_plan_(root);
 
             std::vector<CardinalityData> temp_cardinalities;
@@ -562,6 +565,8 @@ namespace m
                     new_cardinality.true_cardinality = cardinality_data->true_cardinality;
                     new_cardinality.set_range(cardinality_data->estimated_range);
 
+                    new_cardinality.estimated_cardinality = cardinality_data->estimated_cardinality;
+
                     temp_cardinalities.push_back(new_cardinality);
                 }
             }
@@ -579,6 +584,7 @@ namespace m
                     {
                         existing_cardinality->true_cardinality = new_cardinality.true_cardinality;
                         existing_cardinality->estimated_range = new_cardinality.estimated_range;
+                        existing_cardinality->estimated_cardinality = new_cardinality.estimated_cardinality;
                         existing_cardinality->group_by_columns = new_cardinality.group_by_columns;
                         found_existing = true;
 
@@ -708,6 +714,141 @@ namespace m
             }
 
             return false;
+        }
+        /**
+         * @brief Check for stored FILTER cardinality and update the output model
+         *
+         * @param G the QueryGraph (needed for compatibility with other methods)
+         * @param data_model the input data model containing table information
+         * @param filter the filter condition
+         * @param output_model the output model to update with cardinality
+         * @return true if a stored cardinality was found and applied
+         */
+        bool apply_stored_filter_cardinality(
+            const QueryGraph &G,
+            const DataModel &data_model,
+            const cnf::CNF &filter,
+            DataModel &output_model)
+        {
+            // Early return if filter is empty
+            if (filter.empty()) {
+                return false;
+            }
+            
+            // Convert filter to string representation
+            std::ostringstream filter_ss;
+            filter_ss << filter;
+            std::string filter_str = filter_ss.str();
+            
+            // Create a set with just this filter for matching
+            std::set<std::string> filter_strings;
+            filter_strings.insert(filter_str);
+            
+            // Get table names directly from the data model
+            const std::set<std::string> &table_names = data_model.original_tables;
+            
+            // Check stored cardinality directly using table names and filter
+            for (const auto &stored_cardinality : stored_cardinalities_)
+            {
+                // Match based on table names, operator type, and filter string
+                if (stored_cardinality->table_names == table_names &&
+                    stored_cardinality->operator_type == OperatorType::FILTER &&
+                    stored_cardinality->filter_strings == filter_strings)
+                {
+                    // Found a matching entry - update output model
+                    output_model.set_cardinality(stored_cardinality->true_cardinality);
+                    if (stored_cardinality->has_range()) {
+                        output_model.set_range(stored_cardinality->get_range());
+                    }
+                    
+                    if (debug_output_) {
+                        std::cout << "  Applied stored filter cardinality: " 
+                                << stored_cardinality->true_cardinality
+                                << " for filter: " << filter_str << std::endl;
+                    }
+                    
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+
+        /**
+         * @brief Export all cardinality data to CSV
+         * 
+         * @param filename The CSV file to write to (defaults to "cardinality_data.csv")
+         * @return true if export was successful, false otherwise
+         */
+        inline bool export_to_csv(const std::string& filename = "") 
+        {
+
+            // Early return if no cardinalities are stored
+            if (stored_cardinalities_.empty()) {
+                return true;
+            }
+            // Use provided filename or default
+            std::string output_file = filename.empty() ? std::string("ZZZ_SET_CSV_NAME.csv") : filename;
+            
+            // Open file in append mode
+            std::ofstream csv_file;
+            csv_file.open(output_file, std::ios::app);
+            
+            if (!csv_file.is_open()) {
+                std::cerr << "Failed to open CSV file: " << output_file << std::endl;
+                return false;
+            }
+            
+            // Write header if file is new/empty
+            if (csv_file.tellp() == 0) {
+                csv_file << "query_id,operator_id,operator_type,tables,est_card,true_card,q_error,filter_conditions,group_by_columns\n";
+            }
+            
+            // Write all stored cardinality data
+            for (const auto& data : stored_cardinalities_) {
+                // Calculate q-error if both estimated and true cardinality are valid
+                double q_error = -1.0;
+                if (data->estimated_cardinality > 0 && data->true_cardinality > 0) {
+                    q_error = std::max(data->estimated_cardinality / data->true_cardinality, 
+                                    data->true_cardinality / data->estimated_cardinality);
+                }
+                
+                // Combine table names into comma-separated string
+                std::string tables = "";
+                for (const auto& table : data->table_names) {
+                    if (!tables.empty()) tables += "|";
+                    tables += table;
+                }
+                
+                // Combine filter conditions into string
+                std::string filters = "";
+                for (const auto& filter : data->filter_strings) {
+                    if (!filters.empty()) filters += "|";
+                    filters += filter;
+                }
+                
+                // Combine group by columns into string
+                std::string group_by = "";
+                for (const auto& col : data->group_by_columns) {
+                    if (!group_by.empty()) group_by += "|";
+                    group_by += col;
+                }
+                
+                // Quote strings that might contain commas
+                csv_file << query_counter_ << ","
+                        << data->operator_order << ","
+                        << "\"" << data->operator_type << "\","
+                        << "\"" << tables << "\","
+                        << data->estimated_cardinality << ","
+                        << data->true_cardinality << ","
+                        << q_error << ","
+                        << "\"" << filters << "\","
+                        << "\"" << group_by << "\""
+                        << std::endl;
+            }
+            
+            csv_file.close();
+            return true;
         }
 
     private:

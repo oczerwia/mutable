@@ -127,8 +127,12 @@ CartesianProductEstimator::estimate_grouping(const QueryGraph &G, const DataMode
     if (CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *model)) {
         return model;
     }
-
-    model->size = data.size;
+    if (groups.empty())
+    {
+        model->size = 1;  // This is the case for emtpy aggregation
+    } else {
+        model->size = data.size;
+    }
     return model;
 }
 
@@ -252,7 +256,7 @@ HistogramEstimator::estimate_grouping(const QueryGraph &G, const DataModel &_dat
 
     if (groups.empty()) {
         result->size = 1;
-        return result;
+        return result
     }
 
     std::vector<std::string> group_columns;
@@ -558,7 +562,7 @@ RangeCartesianProductEstimator::estimate_grouping(const QueryGraph &G, const Dat
     auto &model = as<const RangeCartesianProductDataModel>(data);
     auto result = std::make_unique<RangeCartesianProductDataModel>();
 
-    // TODO: Need to update later when changing from cartesian product to selectivity based!
+
     std::size_t size = std::min(model.size, std::size_t(groups.empty() ? 1 : model.size));
     result->set_cardinality(size);
 
@@ -568,13 +572,18 @@ RangeCartesianProductEstimator::estimate_grouping(const QueryGraph &G, const Dat
         // For grouping, range depends on group key selectivity
         // Worst case: all values are unique (upper bound = input size)
         // Best case: all values are the same (lower bound = 1)
-        double min_size = groups.empty() ? 1.0 : 1.0;          // At least one group
-        double max_size = groups.empty() ? 1.0 : range.second; // At most one group per row
+        double min_size = groups.empty() ? 1.0 : 1.0;
+        double max_size = groups.empty() ? 1.0 : range.second;
         result->set_range({min_size, max_size});
     }
     else
     {
         result->set_range({double(size), double(size)});
+    }
+
+    if (groups.empty())
+    {
+        result->set_range({double(1.0), double(1.0)});
     }
     return result;
 }

@@ -32,6 +32,7 @@ namespace m
         GROUP_BY,
         PROJECTION,
         LIMIT,
+        AGGREGATION,
         OTHER
     };
     inline std::ostream &operator<<(std::ostream &os, const OperatorType &type)
@@ -55,6 +56,9 @@ namespace m
             break;
         case OperatorType::LIMIT:
             os << "LIMIT";
+            break;
+        case OperatorType::AGGREGATION:
+            os << "AGGREGATION";
             break;
         default:
             os << "OTHER";
@@ -357,6 +361,10 @@ namespace m
             {
                 data.operator_type = OperatorType::LIMIT;
             }
+            else if (dynamic_cast<const AggregationOperator *>(&op))
+            {
+                data.operator_type = OperatorType::AGGREGATION;
+            }
             else
             {
                 data.operator_type = OperatorType::OTHER;
@@ -537,38 +545,34 @@ namespace m
             std::vector<CardinalityData> temp_cardinalities;
 
             for (const auto &cardinality_data : current_cardinality_data)
-            {
-                if (cardinality_data->true_cardinality > 0)
+            {                           
+                CardinalityData new_cardinality;
+
+
+                new_cardinality.table_names.insert(cardinality_data->table_names.begin(),
+                                                    cardinality_data->table_names.end());
+
+
+                for (const auto &filter_str : cardinality_data->filter_strings)
                 {
-                                        
-                    CardinalityData new_cardinality;
-
-
-                    new_cardinality.table_names.insert(cardinality_data->table_names.begin(),
-                                                        cardinality_data->table_names.end());
-
-
-                    for (const auto &filter_str : cardinality_data->filter_strings)
-                    {
-                        new_cardinality.filter_strings.insert(filter_str);
-                    }
-                    if (cardinality_data->has_grouping)
-                    {
-                        new_cardinality.group_by_columns = cardinality_data->group_by_columns;
-                        new_cardinality.has_grouping = true;
-                    }
-
-                    new_cardinality.operator_type = cardinality_data->operator_type;
-                    new_cardinality.operator_name = cardinality_data->operator_name;
-                    new_cardinality.operator_order = cardinality_data->operator_order;
-
-                    new_cardinality.true_cardinality = cardinality_data->true_cardinality;
-                    new_cardinality.set_range(cardinality_data->estimated_range);
-
-                    new_cardinality.estimated_cardinality = cardinality_data->estimated_cardinality;
-
-                    temp_cardinalities.push_back(new_cardinality);
+                    new_cardinality.filter_strings.insert(filter_str);
                 }
+                if (cardinality_data->has_grouping)
+                {
+                    new_cardinality.group_by_columns = cardinality_data->group_by_columns;
+                    new_cardinality.has_grouping = true;
+                }
+
+                new_cardinality.operator_type = cardinality_data->operator_type;
+                new_cardinality.operator_name = cardinality_data->operator_name;
+                new_cardinality.operator_order = cardinality_data->operator_order;
+
+                new_cardinality.true_cardinality = cardinality_data->true_cardinality;
+                new_cardinality.set_range(cardinality_data->estimated_range);
+
+                new_cardinality.estimated_cardinality = cardinality_data->estimated_cardinality;
+
+                temp_cardinalities.push_back(new_cardinality);
             }
 
             for (const CardinalityData &new_cardinality : temp_cardinalities)
@@ -715,6 +719,53 @@ namespace m
 
             return false;
         }
+
+        /**
+         * @brief Check for stored AGGREGATION cardinality and update the output model
+         *
+         * @param G the QueryGraph (needed for compatibility with other methods)
+         * @param data_model the input data model containing table information
+         * @param output_model the output model to update with cardinality
+         * @return true if a stored cardinality was found and applied
+         */
+        bool apply_stored_aggregation_cardinality(
+            const QueryGraph &G,
+            const DataModel &data_model,
+            DataModel &output_model)
+        {
+            // Get table names directly from the data model
+            const std::set<std::string> &table_names = data_model.original_tables;
+            
+            // Check stored cardinality directly using table names
+            for (const auto &stored_cardinality : stored_cardinalities_)
+            {
+                if (stored_cardinality->table_names == table_names &&
+                    stored_cardinality->filter_strings == current_filters_ &&
+                    stored_cardinality->operator_type == OperatorType::AGGREGATION)
+                {
+                    // Found a matching entry - update output model
+                    output_model.set_cardinality(stored_cardinality->true_cardinality);
+                    if (stored_cardinality->has_range()) {
+                        output_model.set_range(stored_cardinality->get_range());
+                    }
+                    
+                    if (debug_output_) {
+                        std::cout << "  Applied stored aggregation cardinality: " 
+                                << stored_cardinality->true_cardinality
+                                << " for tables: ";
+                        for (const auto &name : table_names) {
+                            std::cout << name << " ";
+                        }
+                        std::cout << std::endl;
+                    }
+                    
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+
         /**
          * @brief Check for stored FILTER cardinality and update the output model
          *
@@ -783,14 +834,17 @@ namespace m
         inline bool export_to_csv(const std::string& filename = "") 
         {
 
-            // Early return if no cardinalities are stored
             if (stored_cardinalities_.empty()) {
                 return true;
             }
-            // Use provided filename or default
-            std::string output_file = filename.empty() ? std::string("ZZZ_SET_CSV_NAME.csv") : filename;
+
+            std::string output_file;
+            if (!filename.empty()) {
+                output_file = filename;
+            } else {
+                output_file = std::string("cardinality_data.csv");
+            }
             
-            // Open file in append mode
             std::ofstream csv_file;
             csv_file.open(output_file, std::ios::app);
             
@@ -799,42 +853,35 @@ namespace m
                 return false;
             }
             
-            // Write header if file is new/empty
             if (csv_file.tellp() == 0) {
                 csv_file << "query_id,operator_id,operator_type,tables,est_card,true_card,q_error,filter_conditions,group_by_columns\n";
             }
             
-            // Write all stored cardinality data
             for (const auto& data : stored_cardinalities_) {
-                // Calculate q-error if both estimated and true cardinality are valid
                 double q_error = -1.0;
                 if (data->estimated_cardinality > 0 && data->true_cardinality > 0) {
                     q_error = std::max(data->estimated_cardinality / data->true_cardinality, 
                                     data->true_cardinality / data->estimated_cardinality);
                 }
                 
-                // Combine table names into comma-separated string
                 std::string tables = "";
                 for (const auto& table : data->table_names) {
                     if (!tables.empty()) tables += "|";
                     tables += table;
                 }
                 
-                // Combine filter conditions into string
                 std::string filters = "";
                 for (const auto& filter : data->filter_strings) {
                     if (!filters.empty()) filters += "|";
                     filters += filter;
                 }
                 
-                // Combine group by columns into string
                 std::string group_by = "";
                 for (const auto& col : data->group_by_columns) {
                     if (!group_by.empty()) group_by += "|";
                     group_by += col;
                 }
                 
-                // Quote strings that might contain commas
                 csv_file << query_counter_ << ","
                         << data->operator_order << ","
                         << "\"" << data->operator_type << "\","

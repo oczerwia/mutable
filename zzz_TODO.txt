@@ -4,18 +4,28 @@ TODO / Next steps
 [x] done
 [ ] open
 
+
+Issues:
+[ ] currently needs ages to read and compute Statistics 
+    [x] Add toggling of statistics computation
+    [ ] Implement sampling for statistics
+    [ ] compile loader once
+    [ ] Check if WASM maybe works
+
+[ ] Learning between queries does not seem to work
+    [ ] Inspect multifilter queries
+
+
 small feature:
-[ ] Add a function that gives the option to flush the complete card storage -> Removes the need for ingesting the data all the time
-[ ] Check 'extreme' query cases
+[x] Add a function that gives the option to flush the complete card storage -> Removes the need for ingesting the data all the time
+[x] Add file name as shell argument and run the same thing with different settings and store csvs
+[ ] Make histogram bin size a system parameter
 
 Refactoring:
   [ ] Move cardstorage into a cpp file
   [ ] Move cardinality storage retrieval (for join) into estimator
   [ ] Split up functions in CardinalityStorage
     [ ] Matching based on operators first
-    [ ] Centralize debug printing functions into a seperate file
-    [ ] Centralize string parsing of table / column names
-    [ ] 
 
 
 Diese Woche (Mini-Plan: Mo 11 Aug → Fr 15 Aug):
@@ -26,8 +36,8 @@ Diese Woche (Mini-Plan: Mo 11 Aug → Fr 15 Aug):
   [x] Test export with 1–2 queries locally
 
 [ ] Tuesday:
-  [ ] Run JOB-light subset (5 queries) with histogram, selectivity, cartesian product estimators
-  [ ] Store CSV outputs for all runs
+  [x] Run JOB-light subset (5 queries) with histogram, selectivity, cartesian product estimators with datalimits
+  [x] Store CSV outputs for all runs
   [ ] Verify q-error calculation correctness
 
 [ ] Wednesday:

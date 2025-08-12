@@ -234,13 +234,15 @@ void ImportDSV::execute(Diagnostic &diag)
         else
         {
             M_TIME_EXPR(R(file, path_.c_str()), "Read DSV file", C.timer());
-            auto *stats = const_cast<TableStatistics*>(table_.statistics());
-            if (stats) {
-                std::cout << "Computing statistics for table: " << *table_.name() << std::endl;
-                stats->compute(table_);
-                std::cout << "Statistics computed in DatabaseCommand.cpp. Found " << stats->selectivity.size() << " columns." << std::endl;
-            } else {
-                std::cout << "ERROR: Could not create/access statistics for table!" << std::endl;
+            if (Options::Get().compute_statistics){
+                auto *stats = const_cast<TableStatistics*>(table_.statistics());
+                if (stats) {
+                    std::cout << "Computing statistics for table: " << *table_.name() << std::endl;
+                    stats->compute(table_);
+                    std::cout << "Statistics computed in DatabaseCommand.cpp. Found " << stats->selectivity.size() << " columns." << std::endl;
+                } else {
+                    std::cout << "ERROR: Could not create/access statistics for table!" << std::endl;
+                }
             }
         }
     }

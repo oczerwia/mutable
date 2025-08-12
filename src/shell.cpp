@@ -384,6 +384,18 @@ int main(int argc, const char **argv)
             show_any_help = true;
         }
     );
+    // Whether to compute distinct values / histograms etc
+    ADD(bool, Options::Get().compute_statistics, true,                /* Type, Var, Init  */
+        nullptr, "--no-statistics",                                  /* Short, Long      */
+        "disable automatic statistics computation during import",    /* Description      */
+        [&](bool) { Options::Get().compute_statistics = false; });   /* Callback         */
+
+    ADD(const char*, Options::Get().cardinality_csv_path, nullptr,             /* Type, Var, Init  */
+        nullptr, "--cardinality-csv",                                          /* Short, Long      */
+        "specify file path for cardinality statistics CSV output",             /* Description      */
+        [&](const char *str) { Options::Get().cardinality_csv_path = str; });  /* Callback         */
+
+
     /*------ Cost Model Generation -----------------------------------------------------------------------------------*/
     ADD(bool, Options::Get().train_cost_models, false,                  /* Type, Var, Init  */
         nullptr, "--train-cost-models",                                 /* Short, Long      */

@@ -105,7 +105,7 @@ void m::process_stream(std::istream &in, const char *filename, Diagnostic diag)
             }
         }
 
-        CardinalityStorage::Get().export_to_csv(std::string("query_stats.csv"));
+        CardinalityStorage::Get().export_to_csv(Options::Get().cardinality_csv_path);
         std::cout.flush();
         std::cerr.flush();
     }
@@ -222,7 +222,7 @@ void m::execute_statement(Diagnostic &diag, const ast::Stmt &stmt, const bool is
         // TODO: Add ifstatement later
         CardinalityStorage::Get().map_true_cardinalities_to_logical_plan_(physical_plan->get_matched_root());
         CardinalityStorage::Get().extract_cardinalities_from_execution(physical_plan->get_matched_root());
-        CardinalityStorage::Get().export_to_csv(std::string("query_stats.csv"));
+        //CardinalityStorage::Get().export_to_csv(Options::Get().cardinality_csv_path);
     }
     else if (auto I = cast<const ast::InsertStmt>(&stmt))
     {

@@ -47,6 +47,10 @@ struct M_EXPORT Options
     bool plandot;
     bool physplan;
 
+
+    bool compute_statistics; // whether to compute hist, distinct values etc
+    const char *cardinality_csv_path; // Path for cardinality storage statistics output
+
     /** If `true`, do not pass the query to the backend for execution. */
     bool dryrun;
 

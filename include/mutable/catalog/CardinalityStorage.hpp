@@ -228,6 +228,12 @@ namespace m
             }
         }
 
+        std::string normalize_filter_string(const cnf::CNF &filter) {
+            std::ostringstream normalized;
+            filter.to_sql(normalized); 
+            return normalized.str();
+        }
+
         bool has_stored_cardinality(SmallBitset involved_tables)
         {
             // 1. Iterate over the Bitset
@@ -291,7 +297,7 @@ namespace m
                 if (!ds.filter().empty())
                 {
                     // Convert to string and normalize (sort clauses/predicates)
-                    std::string filter_str = to_string(ds.filter());
+                    std::string filter_str = normalize_filter_string(ds.filter());
                     filter_strings.insert(filter_str);
                 }
             }
@@ -324,9 +330,7 @@ namespace m
             {
                 data.operator_type = OperatorType::FILTER;
                 data.has_filter = true;
-                std::ostringstream ss;
-                ss << filter_op->filter();
-                std::string filter_str = ss.str();
+                std::string filter_str = normalize_filter_string(filter_op->filter());
                 data.filter_strings.insert(filter_str);
             }
             else if (auto join_op = dynamic_cast<const JoinOperator *>(&op))
@@ -473,7 +477,21 @@ namespace m
             current_cardinality_data.push_back(data);
             return data;
         }
-
+        /**
+         * @brief Traverse the physical operator tree and collect cardinality information for each operator.
+         *
+         * This function performs a depth-first traversal of the given operator tree (physical plan root),
+         * extracting and recording relevant cardinality and metadata for each operator node in the plan.
+         * For each operator, it:
+         *   - Assigns a unique operator order (DFS pre-order).
+         *   - Extracts operator type, estimated and true cardinality, filter and group-by information, and involved tables.
+         *   - Propagates filter, group-by, and table information from child operators to parent operators.
+         *   - Stores the collected data in the current_cardinality_data vector for later export or learning.
+         *
+         * This function is typically called once per query, after query execution, and before exporting or learning cardinalities.
+         *
+         * @param root The root operator of the executed physical plan.
+         */
         void map_true_cardinalities_to_logical_plan_(const Operator &root)
         {
 
@@ -527,6 +545,18 @@ namespace m
                     }
                 }
             }
+        }
+
+        void reset_state_for_new_query()
+        {
+            current_filters_.clear();
+            current_group_by_columns.clear();
+            current_cardinality_data.clear();
+        }
+
+        void clear_stored_operators() {
+            current_cardinality_data.clear();
+            reset_traverse_counter_();
         }
 
         /**
@@ -786,12 +816,7 @@ namespace m
                 return false;
             }
             
-            // Convert filter to string representation
-            std::ostringstream filter_ss;
-            filter_ss << filter;
-            std::string filter_str = filter_ss.str();
-            
-            // Create a set with just this filter for matching
+            std::string filter_str = normalize_filter_string(filter);
             std::set<std::string> filter_strings;
             filter_strings.insert(filter_str);
             
@@ -813,9 +838,16 @@ namespace m
                     }
                     
                     if (debug_output_) {
-                        std::cout << "  Applied stored filter cardinality: " 
-                                << stored_cardinality->true_cardinality
-                                << " for filter: " << filter_str << std::endl;
+                        std::cout << "Looking for normalized filter: '" << filter_str << "'" << std::endl;
+                        std::cout << "Stored filters available:" << std::endl;
+                        for (const auto& stored : stored_cardinalities_) {
+                            if (stored->operator_type == OperatorType::FILTER && 
+                                stored->table_names == table_names) {
+                                for (const auto& f : stored->filter_strings) {
+                                    std::cout << "  '" << f << "'" << std::endl;
+                                }
+                            }
+                        }
                     }
                     
                     return true;
@@ -826,15 +858,14 @@ namespace m
         }
 
         /**
-         * @brief Export all cardinality data to CSV
+         * @brief Export only the current query's cardinality data to CSV
          * 
          * @param filename The CSV file to write to (defaults to "cardinality_data.csv")
          * @return true if export was successful, false otherwise
          */
         inline bool export_to_csv(const std::string& filename = "") 
         {
-
-            if (stored_cardinalities_.empty()) {
+            if (current_cardinality_data.empty()) {
                 return true;
             }
 
@@ -857,7 +888,7 @@ namespace m
                 csv_file << "query_id,operator_id,operator_type,tables,est_card,true_card,q_error,filter_conditions,group_by_columns\n";
             }
             
-            for (const auto& data : stored_cardinalities_) {
+            for (const auto& data : current_cardinality_data) {
                 double q_error = -1.0;
                 if (data->estimated_cardinality > 0 && data->true_cardinality > 0) {
                     q_error = std::max(data->estimated_cardinality / data->true_cardinality, 

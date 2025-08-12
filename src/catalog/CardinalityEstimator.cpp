@@ -220,6 +220,10 @@ HistogramEstimator::estimate_filter(const QueryGraph &G, const DataModel &_data,
         return result;
     }
 
+    if (CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *result)) {
+        return result;
+    }
+
     // Apply histogram-based filtering
     auto current_stats = result->get_stats();
     auto filtered_stats = current_stats.filter_by_cnf(filter);
@@ -256,7 +260,7 @@ HistogramEstimator::estimate_grouping(const QueryGraph &G, const DataModel &_dat
 
     if (groups.empty()) {
         result->size = 1;
-        return result
+        return result;
     }
 
     std::vector<std::string> group_columns;
@@ -496,7 +500,7 @@ std::unique_ptr<DataModel> RangeCartesianProductEstimator::estimate_scan(const Q
     double num_rows = static_cast<double>(BT.table().store().num_rows());
 
     auto model = std::make_unique<RangeCartesianProductDataModel>(num_rows);
-    model->set_range({num_rows, num_rows}); // exact range for scan
+    model->set_range({num_rows, num_rows});
     return model;
 }
 
@@ -1472,6 +1476,10 @@ SelectivityEstimator::estimate_filter(const QueryGraph &G, const DataModel &data
     auto m = std::make_unique<SelectivityDataModel>(dm);
     if (filter.empty())
         return m;
+
+    if (CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *m)) {
+        return m;
+    }
     double sel = 1.0;
     auto stats = m->get_stats();
     auto filter_columns = filter.get_filter_columns();

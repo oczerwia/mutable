@@ -2,18 +2,21 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "GOO",
+            "name": "CartesianProduct",
             "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/build/debug_shared/bin/shell",
             "args": [
+                "--no-statistics",
+                "--cardinality-csv",
+                "z_output_data_/CartesianProduct.csv",
                 "--plan-enumerator",
                 "GOO",
                 "--cardinality-estimator",
                 "CartesianProduct",
                 "--backend",
                 "Interpreter",
-                "zzz_micro_query.sql"
+                "benchmark/job-light/job-light_1.sql"
             ],
             "cwd": "${workspaceFolder}",
             "terminal": "integrated"
@@ -24,13 +27,16 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/debug_shared/bin/shell",
             "args": [
+                "--no-statistics",
+                "--cardinality-csv",
+                "z_output_data_/Selecvitity.csv",
                 "--plan-enumerator",
-                "RangeGOO",
-                "--backend",
-                "Interpreter",
+                "GOO",
                 "--cardinality-estimator",
                 "Selectivitybased",
-                "zzz_micro_query.sql"
+                "--backend",
+                "Interpreter",
+                "benchmark/job-light/job-light_1.sql"
             ],
             "cwd": "${workspaceFolder}",
             "terminal": "integrated"
@@ -58,13 +64,15 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/debug_shared/bin/shell",
             "args": [
+                "--cardinality-csv",
+                "z_output_data_/histogram.csv",
                 "--plan-enumerator",
-                "RangeGOO",
+                "GOO",
                 "--cardinality-estimator",
                 "Histogram",
                 "--backend",
                 "Interpreter",
-                "zzz_micro_query.sql"
+                "benchmark/job-light/job-light_1.sql"
             ],
             "cwd": "${workspaceFolder}",
             "terminal": "integrated"

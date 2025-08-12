@@ -220,7 +220,10 @@ void m::execute_statement(Diagnostic &diag, const ast::Stmt &stmt, const bool is
             M_TIME_EXPR(backend->execute(*physical_plan), "Execute query", timer);
         // STORE CARDINALITIES
         // TODO: Add ifstatement later
-        CardinalityStorage::Get().map_true_cardinalities_to_logical_plan_(physical_plan->get_matched_root());
+
+        CardinalityStorage::Get().reset_state_for_new_query(); // Reset ALL state first
+        CardinalityStorage::Get().clear_stored_operators(); 
+
         CardinalityStorage::Get().extract_cardinalities_from_execution(physical_plan->get_matched_root());
         //CardinalityStorage::Get().export_to_csv(Options::Get().cardinality_csv_path);
     }

@@ -221,11 +221,10 @@ void m::execute_statement(Diagnostic &diag, const ast::Stmt &stmt, const bool is
         // STORE CARDINALITIES
         // TODO: Add ifstatement later
 
-        CardinalityStorage::Get().reset_state_for_new_query(); // Reset ALL state first
+        CardinalityStorage::Get().reset_state_for_new_query();
         CardinalityStorage::Get().clear_stored_operators(); 
 
         CardinalityStorage::Get().extract_cardinalities_from_execution(physical_plan->get_matched_root());
-        //CardinalityStorage::Get().export_to_csv(Options::Get().cardinality_csv_path);
     }
     else if (auto I = cast<const ast::InsertStmt>(&stmt))
     {

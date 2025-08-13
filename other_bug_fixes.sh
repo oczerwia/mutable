@@ -15,3 +15,7 @@ echo "X(SEM_VERSION, v0.0.0)" >> /Users/oliver/TU_BERLIN/MASTER/mutable/include/
 # Use ccache for debugging
 export CC="ccache $(brew --prefix llvm@17)/bin/clang"
 export CXX="ccache $(brew --prefix llvm@17)/bin/clang++"
+
+
+# Use csvclean to clean out faulty lines in job-light benchmark
+csvclean -a benchmark/job-light/data/movie_companies.csv >> benchmark/job-ligh/data/movie_companies_cleaned.csv

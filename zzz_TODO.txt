@@ -9,11 +9,11 @@ Issues:
 [ ] currently needs ages to read and compute Statistics 
     [x] Add toggling of statistics computation
     [ ] Implement sampling for statistics
-    [ ] compile loader once
-    [ ] Check if WASM maybe works
+    [x] compile loader once
 
-[ ] Learning between queries does not seem to work
-    [ ] Inspect multifilter queries
+[x] Look into correct handling of mutliple filters -> Need to iterate over filters and add each individually so that we generate a set which is better comparable
+[ ] Statistics in general seem a bit fishy, investigate with Python to compare
+
 
 
 small feature:
@@ -26,6 +26,7 @@ Refactoring:
   [ ] Move cardinality storage retrieval (for join) into estimator
   [ ] Split up functions in CardinalityStorage
     [ ] Matching based on operators first
+  [ ] SPN Function uses callbacks and internal query calls to learn the SPN, could use that for LPBound and Tablestatistics
 
 
 Diese Woche (Mini-Plan: Mo 11 Aug → Fr 15 Aug):
@@ -38,17 +39,17 @@ Diese Woche (Mini-Plan: Mo 11 Aug → Fr 15 Aug):
 [ ] Tuesday:
   [x] Run JOB-light subset (5 queries) with histogram, selectivity, cartesian product estimators with datalimits
   [x] Store CSV outputs for all runs
-  [ ] Verify q-error calculation correctness
+  [ ] Verify q-error calculation correctness -> Need to specify what to do when one of both is 0
 
 [ ] Wednesday:
-  [ ] Debug any CSV or estimator issues
+  [x] Debug any CSV or estimator issues
   [ ] Run full JOB-light for histogram + selectivity
   [ ] Store results locally with date-stamped filenames
 
-[ ] Thursday:
-  [ ] Write analysis script to compute mean/median q-error per estimator
-  [ ] Generate q-error distribution plot (histogram/log-scale)
-  [ ] (Optional) Implement intermediate error accumulation metric
+[x] Thursday:
+  [x] Write analysis script to compute mean/median q-error per estimator
+  [x] Generate q-error distribution plot (histogram/log-scale)
+  [x] (Optional) Implement intermediate error accumulation metric
 
 [ ] Friday:
   [ ] Generate plots (q-error CDF, boxplot/log-scale per estimator)
@@ -63,12 +64,12 @@ Diese Woche (Mini-Plan: Mo 11 Aug → Fr 15 Aug):
 
 [ ] Benchmark
     [x] For JOB light
+    [x] Scrape intermediate and final cardinalities
+    [x] Get true cardinalities
+    [x] Calculate error margin (q-error)
+    [x] Create new metric for accumulated intermediate error
+    [*] Benchmark wallclock time
     [*] Test on larger RAM
-    [*] Scrape intermediate and final cardinalities
-    [*] Get true cardinalities
-    [*] Calculate error margin (q-error)
-    [ ] Create new metric for accumulated intermediate error
-    [ ] Benchmark wallclock time
 
 [x] Statistics
     [x] Histogram generation

@@ -228,10 +228,14 @@ namespace m
             }
         }
 
-        std::string normalize_filter_string(const cnf::CNF &filter) {
-            std::ostringstream normalized;
-            filter.to_sql(normalized); 
-            return normalized.str();
+        std::set<std::string> extract_filter_clauses(const cnf::CNF& filter) {
+            std::set<std::string> clauses;
+            for (const auto& clause : filter) {
+                std::ostringstream oss;
+                clause.to_sql(oss);
+                clauses.insert(oss.str());
+            }
+            return clauses;
         }
 
         bool has_stored_cardinality(SmallBitset involved_tables)
@@ -296,9 +300,8 @@ namespace m
                 const DataSource &ds = *source_ptr;
                 if (!ds.filter().empty())
                 {
-                    // Convert to string and normalize (sort clauses/predicates)
-                    std::string filter_str = normalize_filter_string(ds.filter());
-                    filter_strings.insert(filter_str);
+                    auto clause_strings = extract_filter_clauses(ds.filter());
+                    filter_strings.insert(clause_strings.begin(), clause_strings.end());
                 }
             }
             current_filters_ = filter_strings;
@@ -330,8 +333,8 @@ namespace m
             {
                 data.operator_type = OperatorType::FILTER;
                 data.has_filter = true;
-                std::string filter_str = normalize_filter_string(filter_op->filter());
-                data.filter_strings.insert(filter_str);
+                auto clause_strings = extract_filter_clauses(filter_op->filter());
+                data.filter_strings.insert(clause_strings.begin(), clause_strings.end());
             }
             else if (auto join_op = dynamic_cast<const JoinOperator *>(&op))
             {
@@ -816,9 +819,7 @@ namespace m
                 return false;
             }
             
-            std::string filter_str = normalize_filter_string(filter);
-            std::set<std::string> filter_strings;
-            filter_strings.insert(filter_str);
+            std::set<std::string> filter_strings = extract_filter_clauses(filter);
             
             // Get table names directly from the data model
             const std::set<std::string> &table_names = data_model.original_tables;
@@ -838,7 +839,6 @@ namespace m
                     }
                     
                     if (debug_output_) {
-                        std::cout << "Looking for normalized filter: '" << filter_str << "'" << std::endl;
                         std::cout << "Stored filters available:" << std::endl;
                         for (const auto& stored : stored_cardinalities_) {
                             if (stored->operator_type == OperatorType::FILTER && 

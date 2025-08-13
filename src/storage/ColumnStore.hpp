@@ -11,7 +11,7 @@ namespace m {
 struct ColumnStore : Store
 {
 #ifndef NDEBUG
-    static constexpr std::size_t ALLOCATION_SIZE = 1UL << 35; ///< 20 GiB
+    static constexpr std::size_t ALLOCATION_SIZE = 1UL << 37; ///< 20 GiB
 #else
     static constexpr std::size_t ALLOCATION_SIZE = 1UL << 37; ///< 128 GiB
 #endif

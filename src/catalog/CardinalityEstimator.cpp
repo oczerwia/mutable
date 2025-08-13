@@ -103,6 +103,10 @@ CartesianProductEstimator::estimate_filter(const QueryGraph &G, const DataModel 
     if (CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *model)) {
         return model;
     }
+
+    model->set_stats(data.get_stats());
+    model->original_tables = data.original_tables;
+
     return model;
 }
 
@@ -114,6 +118,13 @@ CartesianProductEstimator::estimate_limit(const QueryGraph &, const DataModel &_
     const std::size_t remaining = offset > data.size ? 0UL : data.size - offset;
     auto model = std::make_unique<CartesianProductDataModel>();
     model->size = std::min(remaining, limit);
+
+    auto stats = model->get_stats();
+    stats.row_count = model->size;
+    model->set_stats(stats);
+
+    model->original_tables = data.original_tables;
+
     return model;
 }
 
@@ -127,12 +138,11 @@ CartesianProductEstimator::estimate_grouping(const QueryGraph &G, const DataMode
     if (CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *model)) {
         return model;
     }
-    if (groups.empty())
-    {
-        model->size = 1;  // This is the case for emtpy aggregation
-    } else {
-        model->size = data.size;
-    }
+    model->size = data.size;
+
+    model->set_stats(data.get_stats());
+    model->original_tables = data.original_tables;
+    
     return model;
 }
 
@@ -143,7 +153,22 @@ CartesianProductEstimator::estimate_join(const QueryGraph &, const DataModel &_l
     auto left = as<const CartesianProductDataModel>(_left);
     auto right = as<const CartesianProductDataModel>(_right);
     auto model = std::make_unique<CartesianProductDataModel>();
-    model->size = left.size * right.size; // this model cannot estimate the effects of a join condition
+
+    // Set size as before
+    model->size = left.size * right.size;
+
+    // Propagate and merge statistics if available
+    auto left_stats = left.get_stats();
+    auto right_stats = right.get_stats();
+    auto merged_stats = left_stats.merge_for_join(right_stats);
+    merged_stats.row_count = model->size;
+    model->set_stats(merged_stats);
+
+    // Propagate original tables
+    std::set<std::string> all_tables = left.original_tables;
+    all_tables.insert(right.original_tables.begin(), right.original_tables.end());
+    model->original_tables = all_tables;
+
     return model;
 }
 

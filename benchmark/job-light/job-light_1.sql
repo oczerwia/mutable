@@ -28,8 +28,8 @@ CREATE TABLE title (
 );
 
 -- Import data from CSV files
-IMPORT INTO cast_info DSV "benchmark/job-light/data/cast_info.csv" ROWS 10000;
-IMPORT INTO title DSV "benchmark/job-light/data/title.csv" ROWS 10000;
+IMPORT INTO cast_info DSV "benchmark/job-light/data/cast_info.csv" ROWS 30000;
+IMPORT INTO title DSV "benchmark/job-light/data/title.csv" ROWS 30000;
 
 -- Query 1 a
 SELECT COUNT(*) 

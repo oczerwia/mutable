@@ -113,19 +113,6 @@ struct M_EXPORT Operator
         return operator_id_;
     }
 
-    /** Print operator statistics */
-    void print_operator_stats() const {
-        std::cout << "=== " << get_operator_id() << " STATS ===" << std::endl;
-        std::cout << "Processed: " << processed_tuples_ << " tuples" << std::endl;
-        std::cout << "Emitted: " << emitted_tuples_ << " tuples" << std::endl;
-        if (processed_tuples_ > 0) {
-            double selectivity = double(emitted_tuples_) / processed_tuples_;
-            std::cout << "Selectivity: " << selectivity << " ("
-                      << (selectivity * 100.0) << "%)" << std::endl;
-        }
-        std::cout << "=================================" << std::endl;
-    }
-
     private:
     /** Sets the ID of `this`. */
     void id(std::size_t id) const { id_ = id; }
@@ -374,9 +361,6 @@ struct M_EXPORT JoinOperator : Producer, Consumer
     std::size_t get_intermediate_result_size() const {
         return get_emitted_tuples();
     }
-
-    void print_intermediate_results() const {
-        print_operator_stats();    }
 
     /*----- Override child setters to correctly adapt the constraints of the computed schema! ------------------------*/
     virtual void add_child(Producer *child) override {

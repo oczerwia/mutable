@@ -5,23 +5,23 @@ TODO / Next steps
 [ ] open
 
 
-Issues:
-[ ] currently needs ages to read and compute Statistics 
-    [x] Add toggling of statistics computation
-    [ ] Implement sampling for statistics
-    [x] compile loader once
+Must solve:
+[ ] Make runnable on server
 
-[x] Look into correct handling of mutliple filters -> Need to iterate over filters and add each individually so that we generate a set which is better comparable
+This evening:
+[ ] Try to run all of JOB-light on a single sql file
+
+
+Issues:
 [ ] Statistics in general seem a bit fishy, investigate with Python to compare
 
-
-
 small feature:
-[x] Add a function that gives the option to flush the complete card storage -> Removes the need for ingesting the data all the time
-[x] Add file name as shell argument and run the same thing with different settings and store csvs
+[ ] Add a function that gives the option to flush the complete card storage -> Removes the need for ingesting the data all the time
 [ ] Make histogram bin size a system parameter
+[ ] Implement sampling for statistics
 
 Refactoring:
+  [ ] Understand and clean complete cardinalityStorage
   [ ] Move cardstorage into a cpp file
   [ ] Move cardinality storage retrieval (for join) into estimator
   [ ] Split up functions in CardinalityStorage
@@ -31,20 +31,12 @@ Refactoring:
 
 Diese Woche (Mini-Plan: Mo 11 Aug → Fr 15 Aug):
 
-[x] Monday:
-  [x] Decide CSV schema (query_id, operator_id, estimator_type, est_card, true_card, q_error, stage)
-  [x] Implement CSV writing functions (append mode)
-  [x] Test export with 1–2 queries locally
 
 [ ] Tuesday:
-  [x] Run JOB-light subset (5 queries) with histogram, selectivity, cartesian product estimators with datalimits
-  [x] Store CSV outputs for all runs
   [ ] Verify q-error calculation correctness -> Need to specify what to do when one of both is 0
 
 [ ] Wednesday:
-  [x] Debug any CSV or estimator issues
   [ ] Run full JOB-light for histogram + selectivity
-  [ ] Store results locally with date-stamped filenames
 
 [x] Thursday:
   [x] Write analysis script to compute mean/median q-error per estimator
@@ -59,27 +51,14 @@ Diese Woche (Mini-Plan: Mo 11 Aug → Fr 15 Aug):
 
 [ ] Innovation
     [*] How to propagate ranges? UB: Recompute LpBound LB: ???
-    [x] How to collapse ranges? - Expected value or upper bound
     [*] How to create lower bound?
 
 [ ] Benchmark
-    [x] For JOB light
-    [x] Scrape intermediate and final cardinalities
-    [x] Get true cardinalities
-    [x] Calculate error margin (q-error)
-    [x] Create new metric for accumulated intermediate error
     [*] Benchmark wallclock time
+    [ ] Run complete JOB-light
     [*] Test on larger RAM
 
-[x] Statistics
-    [x] Histogram generation
-    [x] Selectivity generation
-    [x] Histogram calculations
-    [x] Selectivity calculations
-
 [ ] estimator
-    [x] Selectivity based estimator
-    [*] Histogram based estimator and propagation: How and where do we change sizes, also, we need to adjust all histogram total counts based on the join. (table1.x = table2.x reduces size, so table1.y and table2.h must also be smaller)
     [ ] Propagation for Range Based estimator
     [ ] LpBound based estimator - Need to be able to extract subqueries (should be possible as it is an option)
 
@@ -107,6 +86,21 @@ Diese Woche (Mini-Plan: Mo 11 Aug → Fr 15 Aug):
 
 
 
+
+###############
+CODE ASSUMPTIONS
+###############
+
+- Selectivity
+  - Lots of stuff
+- Histograms
+  - Even more stuff
+
+###############
+CODE Short cuts
+###############
+
+- removed some of the job-light lines that were faulty (mostly because of insertion of ',' in the notes section)
 
 
 #########

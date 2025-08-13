@@ -317,70 +317,40 @@ namespace m
         std::vector<bool> is_numeric(schema.num_entries(), false);
         std::vector<std::size_t> null_counts(schema.num_entries(), 0);
 
-        // For each row, collect values
-        for (std::size_t row = 0; row < row_count; ++row)
-        {
-            auto loader = Interpreter::compile_load(schema, table.store().memory().addr(), table.layout(), schema, row, 0);
-            Tuple *args[] = {&tuple};
-            loader(args);
-
-            for (std::size_t col = 0; col < schema.num_entries(); ++col)
-            {
-                auto &entry = tuple[col];
-
-                if (tuple.is_null(col))
-                {
-                    null_counts[col]++;
-                    continue;
-                }
-
-                std::ostringstream oss;
-                oss << entry;
-                std::string str_value = oss.str();
-                string_values[col].push_back(str_value);
-
-                // Check if numeric and collect numeric values
-                const auto &type = schema[col].type;
-                if (type->is_integral() || type->is_floating_point())
-                {
-                    try
-                    {
-                        double numeric_val = std::stod(str_value);
-                        numeric_values[col].push_back(numeric_val);
-                        is_numeric[col] = true;
-                    }
-                    catch (const std::exception &)
-                    {
-                        // Conversion failed, treat as non-numeric
-                        is_numeric[col] = false;
-                    }
-                }
-            }
-        }
-
-        // Compute statistics for each column
+        // Prepare NDV/selectivity computation using Tuple
         for (std::size_t col = 0; col < schema.num_entries(); ++col)
         {
             std::string col_name = std::string(*schema[col].id.name);
+            std::string full_key = table_name + "." + col_name;
 
-            // Compute selectivity for ALL columns (numeric and non-numeric)
-            std::unordered_set<std::string> unique_vals(string_values[col].begin(), string_values[col].end());
+            std::unordered_set<Value> unique_vals;
+
+            // For each row, extract the value as a single-column Tuple
+            auto loader = Interpreter::compile_load(schema, table.store().memory().addr(), table.layout(), schema, 0, 0);
+            Tuple tuple(schema);
+            for (std::size_t row = 0; row < row_count; ++row)
+            {
+                Tuple *args[] = {&tuple};
+                loader(args);
+
+                if (!tuple.is_null(col))
+                {
+                    unique_vals.insert(tuple[col]);
+                }
+            }
 
             std::size_t nd = unique_vals.size();
-            std::string full_key = table_name + "." + col_name;
-            // store explicit NDV
             distinct_counts[full_key] = nd;
 
-            double sel = row_count > 0 ? double(unique_vals.size()) / double(row_count) : 1.0;
+            double sel = row_count > 0 ? double(nd) / double(row_count) : 1.0;
             selectivity[full_key] = sel;
 
-            // Create histogram ONLY for numeric columns
+            // Create histogram ONLY for numeric columns (keep your existing logic here)
             if (is_numeric[col] && !numeric_values[col].empty())
             {
                 histograms[full_key] = ColumnHistogram::create_numeric_histogram(
-                    numeric_values[col], unique_vals.size(), null_counts[col]);
+                    numeric_values[col], nd, null_counts[col]);
             }
-            // Note: No histogram created for non-numeric columns
         }
     }
 
@@ -666,7 +636,7 @@ namespace m
 
     /**
      * Rescales all histograms to match a specified target cardinality.
-     * 
+     *
      * @param target_cardinality The desired cardinality to scale all histograms to
      * @return A new TableStatistics object with rescaled histograms
      */
@@ -674,69 +644,80 @@ namespace m
     {
         // Create a copy of the current statistics
         TableStatistics result = *this;
-        
+
         // If there are no histograms or target is 0, nothing to do
-        if (histograms.empty() || target_cardinality == 0) {
+        if (histograms.empty() || target_cardinality == 0)
+        {
             return result;
         }
-        
+
         // Scale each histogram directly to the target cardinality
-        for (auto &[col_name, hist] : result.histograms) {
-            if (!hist.is_valid() || hist.total_count == 0 || hist.total_count == target_cardinality) {
-                continue;  // Skip invalid or already-at-target histograms
+        for (auto &[col_name, hist] : result.histograms)
+        {
+            if (!hist.is_valid() || hist.total_count == 0 || hist.total_count == target_cardinality)
+            {
+                continue; // Skip invalid or already-at-target histograms
             }
-            
+
             // Calculate scaling factor directly for this histogram
             double hist_scale_factor = double(target_cardinality) / double(hist.total_count);
-            
+
             // Scale non-null counts proportionally
             std::size_t non_null = hist.total_count - hist.null_count;
             std::size_t new_non_null = static_cast<std::size_t>(double(non_null) * hist_scale_factor);
-            
+
             // Scale each bin proportionally
-            if (non_null > 0) {
+            if (non_null > 0)
+            {
                 double bin_scale = double(new_non_null) / double(non_null);
-                for (auto &bin : hist.bins) {
+                for (auto &bin : hist.bins)
+                {
                     bin = static_cast<std::size_t>(double(bin) * bin_scale);
                 }
             }
-            
+
             // Update total count while preserving null count
             hist.total_count = new_non_null + hist.null_count;
         }
-        
+
         // Update the table row count to match the target cardinality
         result.row_count = target_cardinality;
-        
+
         // Update distinct counts differently depending on scaling direction
         bool scaling_up = target_cardinality > row_count;
-        for (auto &[col_name, distinct_count] : result.distinct_counts) {
-            if (scaling_up) {
+        for (auto &[col_name, distinct_count] : result.distinct_counts)
+        {
+            if (scaling_up)
+            {
                 // When scaling up, conservatively increase NDV
                 // Scale by sqrt of the ratio to model diminishing new distinct values
                 double scale_ratio = sqrt(double(target_cardinality) / double(row_count));
-                distinct_count = std::min(target_cardinality, 
-                                        static_cast<std::size_t>(distinct_count * scale_ratio));
-            } else if (distinct_count > target_cardinality) {
+                distinct_count = std::min(target_cardinality,
+                                          static_cast<std::size_t>(distinct_count * scale_ratio));
+            }
+            else if (distinct_count > target_cardinality)
+            {
                 // When scaling down, cap at new cardinality
                 distinct_count = target_cardinality;
             }
         }
-        
+
         // Update selectivity values based on new cardinality and distinct counts
-        for (auto &[col_name, sel] : result.selectivity) {
-            if (result.distinct_counts.count(col_name) && result.row_count > 0) {
+        for (auto &[col_name, sel] : result.selectivity)
+        {
+            if (result.distinct_counts.count(col_name) && result.row_count > 0)
+            {
                 sel = double(result.distinct_counts.at(col_name)) / double(result.row_count);
             }
         }
-        
+
         return result;
     }
 
-    // TODO: This function also has to rescale every other histogram according to the card count 
+    // TODO: This function also has to rescale every other histogram according to the card count
     TableStatistics TableStatistics::filter_by_cnf(const cnf::CNF &cnf_condition) const
     {
-        TableStatistics result = *this; 
+        TableStatistics result = *this;
 
         for (const auto &clause : cnf_condition)
         {
@@ -754,7 +735,7 @@ namespace m
 
             if (auto binary_expr = cast<const ast::BinaryExpr>(&predicate.expr()))
             {
-            
+
                 auto lhs = cast<const ast::Designator>(binary_expr->lhs.get());
                 if (!lhs || !lhs->has_table_name())
                 {
@@ -819,17 +800,20 @@ namespace m
         }
 
         std::size_t min_cardinality = std::numeric_limits<std::size_t>::max();
-        for (const auto &[col_name, hist] : result.histograms) {
-            if (hist.is_valid() && hist.total_count > 0 && hist.total_count < min_cardinality) {
+        for (const auto &[col_name, hist] : result.histograms)
+        {
+            if (hist.is_valid() && hist.total_count > 0 && hist.total_count < min_cardinality)
+            {
                 min_cardinality = hist.total_count;
             }
         }
-        
+
         // Only rescale if we found valid histograms
-        if (min_cardinality != std::numeric_limits<std::size_t>::max()) {
+        if (min_cardinality != std::numeric_limits<std::size_t>::max())
+        {
             return result.rescale_histograms_to_cardinality(min_cardinality);
         }
-        
+
         // If no valid histograms found, return as-is
         return result;
     }

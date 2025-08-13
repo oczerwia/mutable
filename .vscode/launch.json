@@ -16,7 +16,7 @@
                 "CartesianProduct",
                 "--backend",
                 "Interpreter",
-                "benchmark/job-light/job-light_1.sql"
+                "benchmark/job-light/ALL_QUERIES.sql"
             ],
             "cwd": "${workspaceFolder}",
             "terminal": "integrated"
@@ -35,7 +35,7 @@
                 "Selectivitybased",
                 "--backend",
                 "Interpreter",
-                "benchmark/job-light/job-light_1.sql"
+                "benchmark/job-light/ALL_QUERIES.sql"
             ],
             "cwd": "${workspaceFolder}",
             "terminal": "integrated"
@@ -71,7 +71,7 @@
                 "Histogram",
                 "--backend",
                 "Interpreter",
-                "benchmark/job-light/job-light_1.sql"
+                "benchmark/job-light/ALL_QUERIES.sql"
             ],
             "cwd": "${workspaceFolder}",
             "terminal": "integrated"

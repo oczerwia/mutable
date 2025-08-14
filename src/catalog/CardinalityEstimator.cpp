@@ -287,6 +287,9 @@ HistogramEstimator::estimate_grouping(const QueryGraph &G, const DataModel &_dat
         result->size = 1;
         return result;
     }
+    if (CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *result)) {
+        return result;
+    }
 
     std::vector<std::string> group_columns;
     for (const auto &[grp, alias] : groups) {
@@ -1612,6 +1615,9 @@ SelectivityEstimator::estimate_grouping(const QueryGraph &G, const DataModel &da
     if (groups.empty())
     {
         m->size = 1;
+        return m;
+    }
+    if (CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *m)) {
         return m;
     }
     auto stats = m->get_stats();

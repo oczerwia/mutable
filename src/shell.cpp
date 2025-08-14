@@ -384,6 +384,8 @@ int main(int argc, const char **argv)
             show_any_help = true;
         }
     );
+    /*------ THESIS -----------------------------------------------------------------------------------*/
+    // Thesis specific flags
     // Whether to compute distinct values / histograms etc
     ADD(bool, Options::Get().compute_statistics, true,                /* Type, Var, Init  */
         nullptr, "--no-statistics",                                  /* Short, Long      */
@@ -394,7 +396,11 @@ int main(int argc, const char **argv)
         nullptr, "--cardinality-csv",                                          /* Short, Long      */
         "specify file path for cardinality statistics CSV output",             /* Description      */
         [&](const char *str) { Options::Get().cardinality_csv_path = str; });  /* Callback         */
-
+    
+        ADD(bool, Options::Get().learn_cardinalities, true,
+        nullptr, "--no-learn-cardinalities",
+        "disable cardinality learning (no traversal or storage of cardinalities)",
+        [&](bool) { Options::Get().learn_cardinalities = false; });
 
     /*------ Cost Model Generation -----------------------------------------------------------------------------------*/
     ADD(bool, Options::Get().train_cost_models, false,                  /* Type, Var, Init  */

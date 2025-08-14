@@ -7,6 +7,8 @@
 #include <mutable/IR/Operator.hpp>
 #include <mutable/IR/CNF.hpp>
 #include <mutable/util/ADT.hpp>
+#include <mutable/Options.hpp>
+
 
 #include <unordered_map>
 #include <memory>
@@ -138,6 +140,8 @@ namespace m
         double cardinality_ = -1.0;
         std::pair<double, double> estimated_range = {-1.0, -1.0};
 
+        bool allow_learning = Options::Get().learn_cardinalities;
+
     public:
         // Delete copy/move constructors and assignment operators
         CardinalityStorage(const CardinalityStorage &) = delete;
@@ -244,6 +248,7 @@ namespace m
             // 2. get the involved tables from previously determined set of involved tables
             // 3. iterate over the vector of all previously stored queries and search for equal
             //      sets of tables
+            if (!allow_learning) { return false; }
 
             std::set<std::string> table_names;
             for (auto pos : involved_tables)
@@ -718,6 +723,7 @@ namespace m
             const std::vector<CardinalityEstimator::group_type> &groups,
             DataModel &output_model)
         {
+            if (!allow_learning) { return false; }
             // Extract GROUP BY columns using our helper method
             std::set<std::string> group_by_cols = extract_group_by_columns(groups);
 
@@ -766,6 +772,7 @@ namespace m
             const DataModel &data_model,
             DataModel &output_model)
         {
+            if (!allow_learning) { return false; }
             // Get table names directly from the data model
             const std::set<std::string> &table_names = data_model.original_tables;
             
@@ -814,6 +821,7 @@ namespace m
             const cnf::CNF &filter,
             DataModel &output_model)
         {
+            if (!allow_learning) { return false; }
             // Early return if filter is empty
             if (filter.empty()) {
                 return false;

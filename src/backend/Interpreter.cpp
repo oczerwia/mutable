@@ -1046,7 +1046,7 @@ void Pipeline::operator()(const ScanOperator &op)
         op.parent()->accept(*this);
     }
 
-    op.print_operator_stats();
+    // op.print_operator_stats();
 }
 
 void Pipeline::operator()(const CallbackOperator &op)
@@ -1407,7 +1407,7 @@ void Pipeline::operator()(const LimitOperator &op)
 
     if (data->num_tuples >= op.offset() + op.limit())
         data->limit_reached = true;
-    op.print_operator_stats();
+    // op.print_operator_stats();
 }
 
 void Pipeline::operator()(const GroupingOperator &op)
@@ -1893,7 +1893,7 @@ void Interpreter::operator()(const AggregationOperator &op)
 
     // STATISTICS GENERATION Count the single output tuple
     op.add_emitted_tuples(1);
-    op.print_operator_stats();
+    // op.print_operator_stats();
 
     data->pipeline.push(*op.parent());
 }

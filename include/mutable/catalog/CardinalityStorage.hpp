@@ -258,6 +258,7 @@ namespace m
                     table_names.insert(current_table_names[pos]);
                 }
             }
+            // could be turned into single if instead of multiple
             for (const auto &stored_cardinality : stored_cardinalities_)
             {
                 if (stored_cardinality->table_names == table_names)
@@ -272,6 +273,8 @@ namespace m
                         if (group_by_matches)
                         {
                             cardinality_ = stored_cardinality->get_cardinality();
+                            estimated_range = stored_cardinality->get_range();
+
                             return true;
                         }
                     }
@@ -294,6 +297,11 @@ namespace m
         double get_cardinality() const
         {
             return cardinality_;
+        }
+
+        std::pair<double, double> get_stored_cardinality_range() const
+        {
+            return estimated_range;
         }
 
         void extract_all_filters_as_strings(const QueryGraph &G)
@@ -445,14 +453,14 @@ namespace m
             std::shared_ptr<CardinalityData> data = std::make_shared<CardinalityData>();
             data->operator_order = current_order++;
 
+            data->true_cardinality = op.get_emitted_tuples();
+
             if (op.has_info())
             {
                 extract_operator_metadata_(op, *data);
                 data->estimated_cardinality = op.info().estimated_cardinality;
                 data->estimated_range = op.info().estimated_range;
             }
-
-            data->true_cardinality = op.get_emitted_tuples();
 
             if (!children.empty())
             {
@@ -486,7 +494,8 @@ namespace m
             return data;
         }
         /**
-         * @brief Traverse the physical operator tree and collect cardinality information for each operator.
+         * @brief Traverse the physical operator tree and collect cardinality information for each operator. 
+         * This function is mostly for the debug_print.
          *
          * This function performs a depth-first traversal of the given operator tree (physical plan root),
          * extracting and recording relevant cardinality and metadata for each operator node in the plan.
@@ -568,7 +577,7 @@ namespace m
         }
 
         /**
-         * TODO: Extremely confusing naming conventions
+         * TODO: Extremely confusing naming conventions, function control flow is hard to grasp
          * @brief Extract true cardinalities and populate reduced query graphs
          *
          * @param root The root operator of the executed physical plan
@@ -893,7 +902,7 @@ namespace m
             }
             
             if (csv_file.tellp() == 0) {
-                csv_file << "query_id,operator_id,operator_type,tables,est_card,true_card,q_error,filter_conditions,group_by_columns\n";
+                csv_file << "query_id,operator_id,operator_type,tables,est_card,true_card,q_error,filter_conditions,group_by_columns,lower_bound,upper_bound\n";
             }
             
             for (const auto& data : current_cardinality_data) {
@@ -929,7 +938,9 @@ namespace m
                         << data->true_cardinality << ","
                         << q_error << ","
                         << "\"" << filters << "\","
-                        << "\"" << group_by << "\""
+                        << "\"" << group_by << "\","
+                        << data->estimated_range.first << ","
+                        << data->estimated_range.second
                         << std::endl;
             }
             

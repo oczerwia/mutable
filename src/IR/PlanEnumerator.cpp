@@ -128,6 +128,8 @@ struct DPsizeOpt final : PlanEnumeratorCRTP<DPsizeOpt>
         std::size_t n = sources.size();
         const AdjacencyMatrix &M = G.adjacency_matrix();
         auto &CE = Catalog::Get().get_database_in_use().cardinality_estimator();
+        CardinalityStorage::Get().update_current_table_names(G); // Move this to estimator
+        CardinalityStorage::Get().extract_all_filters_as_strings(G);
 
         /* Process all subplans of size greater than one. */
         for (std::size_t s = 2; s <= n; ++s)
@@ -155,9 +157,7 @@ struct DPsizeOpt final : PlanEnumeratorCRTP<DPsizeOpt>
                                 continue; // subproblems not connected -> skip
 
                             // Check for stored cardinality before updating the plan
-                            const Subproblem joined = *S1 | *S2;
-                            bool found = false;
-                            double stored_cardinality = -1.0;
+                            const Subproblem joined = *S1 | *S2;                         
 
                             cnf::CNF condition; // TODO use join condition
 
@@ -165,13 +165,12 @@ struct DPsizeOpt final : PlanEnumeratorCRTP<DPsizeOpt>
                             if (not PT[joined].model)
                                 PT[joined].model = CE.estimate_join(G, *PT[*S1].model, *PT[*S2].model, condition);
 
-                            // If we found a stored cardinality, update the model
-                            if (found)
+                            if (CardinalityStorage::Get().has_stored_cardinality(joined))
                             {
+                                auto stored_cardinality = CardinalityStorage::Get().get_cardinality();
                                 if (CardinalityStorage::Get().debug_output())
                                     std::cout << "Using stored true cardinality in DPsizeOpt: " << stored_cardinality << std::endl;
 
-                                // Update the model's cardinality to match the stored true cardinality
                                 PT[joined].model->set_cardinality(stored_cardinality);
                             }
 
@@ -196,22 +195,18 @@ struct DPsizeOpt final : PlanEnumeratorCRTP<DPsizeOpt>
 
                             // Check for stored cardinality before updating the plan
                             const Subproblem joined = *S1 | *S2;
-                            bool found = false;
-                            double stored_cardinality = -1.0;
 
                             cnf::CNF condition; // TODO use join condition
 
-                            // Create the model if needed
                             if (not PT[joined].model)
                                 PT[joined].model = CE.estimate_join(G, *PT[*S1].model, *PT[*S2].model, condition);
 
-                            // If we found a stored cardinality, update the model
-                            if (found)
+                            if (CardinalityStorage::Get().has_stored_cardinality(joined))
                             {
+                                auto stored_cardinality = CardinalityStorage::Get().get_cardinality();
                                 if (CardinalityStorage::Get().debug_output())
                                     std::cout << "Using stored true cardinality in DPsizeOpt: " << stored_cardinality << std::endl;
 
-                                // Update the model's cardinality to match the stored true cardinality
                                 PT[joined].model->set_cardinality(stored_cardinality);
                             }
 
@@ -816,6 +811,9 @@ void GOO::operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const Co
         nodes[i] = node(S, N);
     }
 
+    CardinalityStorage::Get().update_current_table_names(G);
+    CardinalityStorage::Get().extract_all_filters_as_strings(G);
+
     /*----- Greedyly enumerate joins, thereby computing a plan. -----*/
     compute_plan(PT, G, M, CF, CE, nodes, nodes + G.num_sources());
 }
@@ -839,6 +837,8 @@ void RangeGOO::operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, con
         Subproblem N = M.neighbors(S);
         nodes[i] = node(S, N);
     }
+    CardinalityStorage::Get().update_current_table_names(G);
+    CardinalityStorage::Get().extract_all_filters_as_strings(G);
 
     /*----- Greedyly enumerate joins, thereby computing a plan. -----*/
     compute_plan(PT, G, M, CF, CE, nodes, nodes + G.num_sources());

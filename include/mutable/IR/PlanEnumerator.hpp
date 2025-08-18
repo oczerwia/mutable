@@ -108,21 +108,8 @@ namespace m
             /** Enumerate the sequence of joins that yield the smallest subproblem in each step. */
             template <typename Callback, typename PlanTable>
             void for_each_join(Callback &&callback, PlanTable &PT, const QueryGraph &G, const AdjacencyMatrix &M,
-                               const CostFunction &, const CardinalityEstimator &CE, node *begin, node *end) const
+                               const CostFunction &CF, const CardinalityEstimator &CE, node *begin, node *end) const
             {
-                cnf::CNF condition;
-
-                // Lets inspect everything that we get during our joins
-
-                const PlanTable &c_pt = PT;
-                const QueryGraph &c_g = G;
-
-                node *c_begin = begin;
-
-                CardinalityStorage::Get().update_current_table_names(G);
-                CardinalityStorage::Get().extract_all_filters_as_strings(G);
-
-
 
                 while (begin + 1 != end)
                 {
@@ -140,31 +127,23 @@ namespace m
                                 M_insist((outer->subproblem & inner->subproblem).empty());
                                 M_insist(M.is_connected(outer->subproblem, inner->subproblem));
                                 const Subproblem joined = outer->subproblem | inner->subproblem;
-                                // Search the CardinalityStorage for matching plans
-                                bool found = false;
-                                double stored_cardinality = -1.0;
+                                bool found = false;               // Move this to estimator
+                                double stored_cardinality = -1.0; // Move this to estimator
 
                                 if (CardinalityStorage::Get().has_stored_cardinality(joined))
                                 {
-                                    std::cout << "FOUND WITH NEW CARD METHOD" << std::endl;
                                     found = true;
                                     stored_cardinality = CardinalityStorage::Get().get_cardinality();
                                 }
 
-                                // Create data model if needed - use existing code
                                 if (not PT[joined].model)
                                     PT[joined].model = CE.estimate_join(G, *PT[outer->subproblem].model,
-                                                                        *PT[inner->subproblem].model, condition);
+                                                                        *PT[inner->subproblem].model, cnf::CNF{});
 
-                                // Use stored cardinality if found, otherwise use estimate
                                 double C_joined;
                                 if (found)
                                 {
                                     C_joined = stored_cardinality;
-                                    if (CardinalityStorage::Get().debug_output())
-                                        std::cout << "Using stored true cardinality: " << C_joined << std::endl;
-
-                                    // Update the model's cardinality to match the stored true cardinality
                                     PT[joined].model->set_cardinality(C_joined);
                                 }
 
@@ -267,7 +246,6 @@ namespace m
             void operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const CostFunction &CF) const;
         };
 
-
         /** Range-based greedy operator ordering. */
         struct M_EXPORT RangeGOO : PlanEnumeratorCRTP<RangeGOO>
         {
@@ -277,8 +255,9 @@ namespace m
             // Reuse GOO's node structure
             using node = GOO::node;
 
+            // TODO: THis needs to be shell selectable
             // Default to upper bound comparison
-            std::unique_ptr<RangeComparer> comparer_ = std::make_unique<MeanUncertaintyComparer>(0.3);
+            std::unique_ptr<RangeComparer> comparer_ = GetRangeComparer_();
 
             std::shared_ptr<RangeAdjustmentStrategy> range_adjustment_strategy_ =
                 std::make_shared<TightenBoundsStrategy>(0.4);
@@ -289,10 +268,7 @@ namespace m
                                const CostFunction &, const CardinalityEstimator &CE, node *begin, node *end) const
             {
 
-                CardinalityStorage::Get().update_current_table_names(G);
-                CardinalityStorage::Get().extract_all_filters_as_strings(G);
-                const auto& table_names = CardinalityStorage::Get().get_current_table_names();
-                
+                const auto &table_names = CardinalityStorage::Get().get_current_table_names();
 
                 while (begin + 1 != end)
                 {
@@ -309,17 +285,16 @@ namespace m
                             {
                                 const Subproblem joined = outer->subproblem | inner->subproblem;
 
-                                std::pair<double, double> current_range = {-1.0, -1.0};
                                 if (not PT[joined].model)
                                     PT[joined].model = CE.estimate_join(G, *PT[outer->subproblem].model,
                                                                         *PT[inner->subproblem].model, cnf::CNF{});
 
                                 if (CardinalityStorage::Get().has_stored_cardinality(joined))
                                 {
-                                    double stored_card = CardinalityStorage::Get().get_cardinality();
+                                    auto stored_card = CardinalityStorage::Get().get_cardinality();
+                                    auto stored_card_range = CardinalityStorage::Get().get_stored_cardinality_range();
                                     PT[joined].model->set_cardinality(stored_card);
-                                    current_range = {stored_card, stored_card};
-                                    PT[joined].model->set_range(current_range);
+                                    PT[joined].model->set_range(stored_card_range);
                                 }
                                 else
                                 {

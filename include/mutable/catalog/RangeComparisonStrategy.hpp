@@ -1,6 +1,8 @@
 // Used to define strategies of comparing ranges with each other for the plan enumerator
 
 #include <utility>
+#include <mutable/Options.hpp>
+#include <memory>
 
 struct RangeComparer
 {
@@ -48,3 +50,16 @@ struct MeanUncertaintyComparer : public RangeComparer
         return score_a < score_b;
     }
 };
+
+inline std::unique_ptr<RangeComparer> GetRangeComparer_() {
+    const char* strategy = m::Options::Get().collapse_function;
+    if (!strategy || std::string(strategy) == "UpperBound") {
+        return std::make_unique<UpperBoundComparer>();
+    } else if (std::string(strategy) == "LowerBound") {
+        return std::make_unique<LowerBoundComparer>();
+    } else if (std::string(strategy) == "Mean") {
+        return std::make_unique<MeanUncertaintyComparer>();
+    } else {
+        return std::make_unique<UpperBoundComparer>();
+    }
+}

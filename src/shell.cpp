@@ -397,10 +397,15 @@ int main(int argc, const char **argv)
         "specify file path for cardinality statistics CSV output",             /* Description      */
         [&](const char *str) { Options::Get().cardinality_csv_path = str; });  /* Callback         */
     
-        ADD(bool, Options::Get().learn_cardinalities, true,
-        nullptr, "--no-learn-cardinalities",
-        "disable cardinality learning (no traversal or storage of cardinalities)",
-        [&](bool) { Options::Get().learn_cardinalities = false; });
+    ADD(bool, Options::Get().learn_cardinalities, true,
+    nullptr, "--no-learn-cardinalities",
+    "disable cardinality learning (no traversal or storage of cardinalities)",
+    [&](bool) { Options::Get().learn_cardinalities = false; });
+
+    ADD(const char*, Options::Get().collapse_function, nullptr ,
+    nullptr, "--collapse-function",
+    "Selects a collapse function for range based approaches (Choose between: UpperBound, LowerBound, Mean)",
+    [&](const char *str) { Options::Get().collapse_function = str; });
 
     /*------ Cost Model Generation -----------------------------------------------------------------------------------*/
     ADD(bool, Options::Get().train_cost_models, false,                  /* Type, Var, Init  */

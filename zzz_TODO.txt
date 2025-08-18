@@ -4,34 +4,43 @@ TODO / Next steps
 [x] done
 [ ] open
 
+Debug:
+  - size (in datamodel) is completely weird
+  - If we set the cardinality, the model state is not adjusted -> I.e. histograms stay the same but the cardinality has changed
+  - Look if stored source tables need to be reset on the cardinality storage
+
 
 Today:
-[ ] Move card est for join to estimator
-[ ] Fix / activate range based
-[ ] Test DPsizeOpt
-[ ] Run complete benchmark on limited rows
+[x] Move card est for join to estimator // Will not do this, as each enumerator has its own way of adressing
+[x] Test DPsizeOpt
+[x] Fix / activate range based
 
-[ ] Map out all leetcode topics
-[ ] Start going over DBT slides and add anki cards
+[x] Store ranges as well
+[x] Make collapse function shell selectable
 
-Optional:
-[ ] Implement histogram based worse case / intersection style 
+[x] Map out all leetcode topics
+[x] Start going over DBT slides and add anki cards (first 3 chapters)
 
 Tomorrow:
 [ ] Write Sebastian the server mail
-[ ] Make collapse function shell selectable
+[ ] Check wall clock timer and add to csv
+[ ] Run complete benchmark on limited rows
 [ ] Start collecting papers on card est
-[ ] Check wall clock timer
-[ ] Fully finish data analysis pipeline / generate automated reporting
+
 [ ] Read papers
   [ ] Determine q-error calculation
   [ ] Map out / document approaches with Zotero
+[ ] Fully finish data analysis pipeline / generate automated reporting
+[ ] Continue with anki cards -> From chapter 4 onwards
 
 [ ] Think about how to propagate the range
 
 Wednesday:
 [ ] Have one range based estimation completely run and analyzed
-[ ] 
+
+
+Side:
+[ ] Understand Gospers Hack / DpSizeOpt
 
 
 

@@ -27,6 +27,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/debug_shared/bin/shell",
             "args": [
+                //"--no-learn-cardinalities",
                 "--cardinality-csv",
                 "z_output_data_/Selecvitity.csv",
                 "--plan-enumerator",
@@ -35,7 +36,7 @@
                 "Selectivitybased",
                 "--backend",
                 "Interpreter",
-                "benchmark/job-light/ALL_QUERIES.sql"
+                "zzz_micro_query.sql"
             ],
             "cwd": "${workspaceFolder}",
             "terminal": "integrated"
@@ -52,6 +53,10 @@
                 "RangeCartesianProduct",
                 "--backend",
                 "Interpreter",
+                "--cardinality-csv",
+                "z_output_data_/range_first_try.csv",
+                "--collapse-function",
+                "UpperBound",
                 "zzz_micro_query.sql"
             ],
             "cwd": "${workspaceFolder}",
@@ -85,7 +90,12 @@
                 "--plan-enumerator",
                 "DPsizeOpt",
                 "--backend",
-                "Interpreter"
+                "Interpreter",
+                "--cardinality-csv",
+                "z_output_data_/dp_size_opt.csv",
+                "--cardinality-estimator",
+                "CartesianProduct",
+                "zzz_micro_query.sql"
             ],
             "cwd": "${workspaceFolder}",
             "terminal": "integrated"

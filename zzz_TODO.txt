@@ -5,16 +5,50 @@ TODO / Next steps
 [ ] open
 
 
+Today:
+[ ] Move card est for join to estimator
+[ ] Fix / activate range based
+[ ] Test DPsizeOpt
+[ ] Run complete benchmark on limited rows
+
+[ ] Map out all leetcode topics
+[ ] Start going over DBT slides and add anki cards
+
+Optional:
+[ ] Implement histogram based worse case / intersection style 
+
+Tomorrow:
+[ ] Write Sebastian the server mail
+[ ] Make collapse function shell selectable
+[ ] Start collecting papers on card est
+[ ] Check wall clock timer
+[ ] Fully finish data analysis pipeline / generate automated reporting
+[ ] Read papers
+  [ ] Determine q-error calculation
+  [ ] Map out / document approaches with Zotero
+
+[ ] Think about how to propagate the range
+
+Wednesday:
+[ ] Have one range based estimation completely run and analyzed
+[ ] 
+
+
+
 Must solve:
-[ ] Make runnable on server
-[x] Run full job-light
+[ ] Make runnable on server -> Server still seems to not work POSTPONED
+  [ ] Run full job-light
+[ ] Write full analysis script that just takes in the stats
+
+Naive Range Estimators
+[ ] Rule based propagation
+[ ] Histogram based propagation
 
 
 Issues:
 [ ] Statistics in general seem a bit fishy, investigate with Python to compare
 
 small feature:
-[ ] Add a function that gives the option to flush the complete card storage -> Removes the need for ingesting the data all the time
 [ ] Make histogram bin size a system parameter
 [ ] Implement sampling for statistics
 
@@ -24,10 +58,6 @@ Refactoring:
   [ ] Move cardinality storage retrieval (for join) into estimator
   [ ] Split up functions in CardinalityStorage
     [ ] Matching based on operators first
-  [ ] SPN Function uses callbacks and internal query calls to learn the SPN, could use that for LPBound and Tablestatistics
-
-
-Diese Woche (Mini-Plan: Mo 11 Aug → Fr 15 Aug):
 
 
 [ ] Tuesday:
@@ -36,37 +66,18 @@ Diese Woche (Mini-Plan: Mo 11 Aug → Fr 15 Aug):
 [ ] Wednesday:
   [ ] Run full JOB-light for histogram + selectivity
 
-[x] Thursday:
-  [x] Write analysis script to compute mean/median q-error per estimator
-  [x] Generate q-error distribution plot (histogram/log-scale)
-  [x] (Optional) Implement intermediate error accumulation metric
-
-[ ] Friday:
-  [ ] Generate plots (q-error CDF, boxplot/log-scale per estimator)
-  [ ] Summarize observations in short text (baseline results: hist vs sel vs cartesian)
-  [ ] Archive code, CSVs, and plots in a dated folder
-
-
 [ ] Innovation
-    [*] How to propagate ranges? UB: Recompute LpBound LB: ???
+    [*] How to propagate ranges? UB: LB: ???
     [*] How to create lower bound?
 
 [ ] Benchmark
     [*] Benchmark wallclock time
-    [ ] Run complete JOB-light
+    [*] Run complete JOB-light
     [*] Test on larger RAM
 
 [ ] estimator
     [ ] Propagation for Range Based estimator
     [ ] LpBound based estimator - Need to be able to extract subqueries (should be possible as it is an option)
-
-[*] Lp Bound
-    [*] Understand code 
-    [*] Run code on benchmark
-    [*] Adjust cardinality injection code
-    [*] Inject Cardinalities into estimation
-    [*] Intermediate cardinalities
-    [*] Make LpBound runnable from mutables
 
 
 [ ] Presentation

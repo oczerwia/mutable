@@ -958,8 +958,7 @@ namespace m
                         << this->current_query_timings["Compute the physical query plan"] << ","
                         << this->current_query_timings["Execute query"]
                         << std::endl;
-            } // TODO: Schauen ob das hier überhaupt geöffnet wird
-            auto test___ = this->current_query_timings["Execute query"];
+            }
             csv_file.close();
             return true;
         }

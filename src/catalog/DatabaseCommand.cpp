@@ -246,6 +246,7 @@ void ImportDSV::execute(Diagnostic &diag)
         else
         {
             M_TIME_EXPR(R(file, path_.c_str()), "Read DSV file", C.timer());
+            std::cout << "Reading in table " << *table_.name() << std::endl;
             if (Options::Get().compute_statistics)
             {
                 auto *stats = const_cast<TableStatistics *>(table_.statistics());

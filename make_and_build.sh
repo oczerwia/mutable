@@ -1,9 +1,12 @@
 #!/bin/bash
 set -e
 
+export CCACHE_DIR="$HOME/.ccache"
+mkdir -p "$CCACHE_DIR"
+
 # === Improve ccache reliability and speed ===
 ccache --set-config sloppiness=file_macro,locale,time_macros,include_file_ctime,include_file_mtime
-ccache --set-config compression=true
+ccache --set-config compression=false
 ccache --set-config compression_level=6
 echo "Using ccache config:"
 ccache -p | grep -E 'sloppiness|compression'
@@ -31,7 +34,7 @@ cmake -S . -B "$BUILD_DIR" \
     -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DBUILD_SHARED_LIBS=ON \
-    -DWITH_V8=ON \
+    -DWITH_V8=OFF \
     -DENABLE_SANITIZERS=OFF \
     -DENABLE_SANITY_FIELDS=OFF \
     -DBOOST_ROOT="$BOOST_PATH" \

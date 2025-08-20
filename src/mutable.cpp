@@ -92,18 +92,6 @@ void m::process_stream(std::istream &in, const char *filename, Diagnostic diag)
             std::cout.flush();
             timer.clear();
         }
-        if (C.has_database_in_use())
-        {
-            auto &db = C.get_database_in_use();
-            for (auto it = db.begin_tables(); it != db.end_tables(); ++it)
-            {
-                auto &table = *it->second;
-                if (auto *stats = table.statistics())
-                {
-                    stats->compute(table);
-                }
-            }
-        }
 
         CardinalityStorage::Get().export_to_csv(Options::Get().cardinality_csv_path);
         std::cout.flush();

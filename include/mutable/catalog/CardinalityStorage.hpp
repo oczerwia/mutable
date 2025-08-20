@@ -94,6 +94,8 @@ namespace m
         double selectivity = -1.0;
         double error_percent = -1.0;
 
+
+
     public:
         double get_cardinality() const { return true_cardinality; }
         bool has_range() const { return estimated_range.first >= 0.0; }
@@ -142,6 +144,8 @@ namespace m
 
         bool allow_learning = Options::Get().learn_cardinalities;
 
+        std::unordered_map<std::string, double> current_query_timings;
+
     public:
         // Delete copy/move constructors and assignment operators
         CardinalityStorage(const CardinalityStorage &) = delete;
@@ -166,6 +170,10 @@ namespace m
         const std::vector<std::string> &get_current_table_names() const
         {
             return current_table_names;
+        }
+
+        void fill_timing_values(std::unordered_map<std::string, double> times){
+            current_query_timings = times;
         }
 
         /**
@@ -874,6 +882,8 @@ namespace m
             return false;
         }
 
+        
+
         /**
          * @brief Export only the current query's cardinality data to CSV
          * 
@@ -902,7 +912,7 @@ namespace m
             }
             
             if (csv_file.tellp() == 0) {
-                csv_file << "query_id,operator_id,operator_type,tables,est_card,true_card,q_error,filter_conditions,group_by_columns,lower_bound,upper_bound\n";
+                csv_file << "query_id,operator_id,operator_type,tables,est_card,true_card,q_error,filter_conditions,group_by_columns,lower_bound,upper_bound,dsv_time,qg_constuct_time,lqp_time,plan_enum_time,create_backend_time,pqp_time,exec_query_time\n";
             }
             
             for (const auto& data : current_cardinality_data) {
@@ -940,10 +950,16 @@ namespace m
                         << "\"" << filters << "\","
                         << "\"" << group_by << "\","
                         << data->estimated_range.first << ","
-                        << data->estimated_range.second
+                        << this->current_query_timings["Read DSV file"] << ","
+                        << this->current_query_timings["Construct the query graph"] << ","
+                        << this->current_query_timings["Compute the logical query plan"] << ","
+                        << this->current_query_timings["Plan enumeration"] << ","
+                        << this->current_query_timings["Create backend"] << ","
+                        << this->current_query_timings["Compute the physical query plan"] << ","
+                        << this->current_query_timings["Execute query"]
                         << std::endl;
-            }
-            
+            } // TODO: Schauen ob das hier überhaupt geöffnet wird
+            auto test___ = this->current_query_timings["Execute query"];
             csv_file.close();
             return true;
         }

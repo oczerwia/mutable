@@ -8,6 +8,7 @@
 #include <mutable/Options.hpp>
 #include <mutable/storage/Index.hpp>
 #include <mutable/util/DotTool.hpp>
+#include <mutable/catalog/CardinalityStorage.hpp>
 
 using namespace m;
 
@@ -135,6 +136,17 @@ void QueryDatabase::execute(Diagnostic &diag)
 
     if (not Options::Get().dryrun)
         M_TIME_EXPR(backend->execute(*physical_plan_), "Execute query", C.timer());
+
+    auto &card_storage = CardinalityStorage::Get();
+    std::unordered_map<std::string, double> times;
+    using namespace std::chrono;
+    for (const auto &M : C.timer())
+    {
+        if (M.is_finished())
+            std::cout << M.name << ": " << duration_cast<microseconds>(M.duration()).count() / 1e3 << '\n';
+        times[M.name] = duration_cast<microseconds>(M.duration()).count() / 1e3;
+    }
+    card_storage.fill_timing_values(times);
 }
 
 void InsertRecords::execute(Diagnostic &)
@@ -234,13 +246,17 @@ void ImportDSV::execute(Diagnostic &diag)
         else
         {
             M_TIME_EXPR(R(file, path_.c_str()), "Read DSV file", C.timer());
-            if (Options::Get().compute_statistics){
-                auto *stats = const_cast<TableStatistics*>(table_.statistics());
-                if (stats) {
+            if (Options::Get().compute_statistics)
+            {
+                auto *stats = const_cast<TableStatistics *>(table_.statistics());
+                if (stats)
+                {
                     std::cout << "Computing statistics for table: " << *table_.name() << std::endl;
                     stats->compute(table_);
                     std::cout << "Statistics computed in DatabaseCommand.cpp. Found " << stats->selectivity.size() << " columns." << std::endl;
-                } else {
+                }
+                else
+                {
                     std::cout << "ERROR: Could not create/access statistics for table!" << std::endl;
                 }
             }

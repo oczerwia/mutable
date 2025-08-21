@@ -9,6 +9,7 @@ struct RangeComparer
     // Simple interface to compare ranges - returns true if a is better than b
     virtual bool compare(const std::pair<double, double> &a, const std::pair<double, double> &b) const = 0;
     virtual ~RangeComparer() = default;
+    virtual double collapse(const std::pair<double, double> &a) = 0;
 };
 
 // Concrete implementations
@@ -18,6 +19,10 @@ struct UpperBoundComparer : public RangeComparer
     {
         return a.second < b.second;
     }
+    double collapse(const std::pair<double, double> &a){
+        return a.second;
+    }
+
 };
 
 struct LowerBoundComparer : public RangeComparer
@@ -26,12 +31,14 @@ struct LowerBoundComparer : public RangeComparer
     {
         return a.first < b.first;
     }
+    double collapse(const std::pair<double, double> &a){
+        return a.first;
+    }
 };
 
 
 struct MeanUncertaintyComparer : public RangeComparer
 {
-    // weight: 0.0 = only mean, 1.0 = only uncertainty, in between = trade-off
     double uncertainty_weight;
     MeanUncertaintyComparer(double uncertainty_weight = 0.3)
         : uncertainty_weight(uncertainty_weight) {}
@@ -49,6 +56,10 @@ struct MeanUncertaintyComparer : public RangeComparer
 
         return score_a < score_b;
     }
+    double collapse(const std::pair<double, double> &a){
+        return (a.first + a.second) / 2;
+    }
+
 };
 
 inline std::unique_ptr<RangeComparer> GetRangeComparer_() {

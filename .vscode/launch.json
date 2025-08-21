@@ -16,7 +16,7 @@
                 "CartesianProduct",
                 "--backend",
                 "Interpreter",
-                "benchmark/job-light/ALL_QUERIES.sql"
+                "zzz_micro_query.sql" //"benchmark/job-light/ALL_QUERIES.sql"
             ],
             "cwd": "${workspaceFolder}",
             "terminal": "integrated"
@@ -36,6 +36,27 @@
                 "Selectivitybased",
                 "--backend",
                 "Interpreter",
+                "zzz_micro_query.sql"
+            ],
+            "cwd": "${workspaceFolder}",
+            "terminal": "integrated"
+        },
+        {
+            "name": "ExperimentalRangeEstimator",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug_shared/bin/shell",
+            "args": [
+                "--plan-enumerator",
+                "RangeGOO",
+                "--cardinality-estimator",
+                "ExperimentalRange",
+                "--backend",
+                "Interpreter",
+                "--cardinality-csv",
+                "z_output_data_/ExperimentalRangeEstimator.csv",
+                "--collapse-function",
+                "UpperBound",
                 "zzz_micro_query.sql"
             ],
             "cwd": "${workspaceFolder}",
@@ -76,7 +97,7 @@
                 "Histogram",
                 "--backend",
                 "Interpreter",
-                "benchmark/job-light/ALL_QUERIES.sql"
+                "zzz_micro_query.sql" //"benchmark/job-light/ALL_QUERIES.sql"
             ],
             "cwd": "${workspaceFolder}",
             "terminal": "integrated"

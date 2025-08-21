@@ -395,12 +395,15 @@ namespace m
         for (auto &kv : other.histograms)
             result.histograms[kv.first] = kv.second;
 
-        // merge distinct_counts too
+
         result.distinct_counts = distinct_counts;
         for (auto &kv : other.distinct_counts)
             result.distinct_counts[kv.first] = kv.second;
 
-        // row_count will be set by the estimator
+        result.most_frequent_values = most_frequent_values;
+        for (auto &kv : other.most_frequent_values)
+            result.most_frequent_values[kv.first] = kv.second;
+
         result.row_count = 0;
         return result;
     }

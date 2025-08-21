@@ -311,7 +311,6 @@ namespace m
         const auto &schema = table.schema();
         Tuple tuple(schema);
 
-        // Prepare containers for each column
         std::vector<std::vector<std::string>> string_values(schema.num_entries());
         std::vector<std::vector<double>> numeric_values(schema.num_entries());
         std::vector<bool> is_numeric(schema.num_entries(), false);
@@ -323,29 +322,42 @@ namespace m
             std::string col_name = std::string(*schema[col].id.name);
             std::string full_key = table_name + "." + col_name;
 
-            std::unordered_set<Value> unique_vals;
+            std::unordered_map<Value, int> value_count;
 
             // For each row, extract the value as a single-column Tuple
             auto loader = Interpreter::compile_load(schema, table.store().memory().addr(), table.layout(), schema, 0, 0);
             Tuple tuple(schema);
+
             for (std::size_t row = 0; row < row_count; ++row)
             {
+                
                 Tuple *args[] = {&tuple};
                 loader(args);
 
                 if (!tuple.is_null(col))
                 {
-                    unique_vals.insert(tuple[col]);
+                    ++value_count[tuple[col]];
                 }
             }
 
-            std::size_t nd = unique_vals.size();
+            std::size_t nd = value_count.size();
             distinct_counts[full_key] = nd;
+
+            // Compute Top K TODO: Make this a setting
+            
+            int most_frequent_value_count = -1;
+
+            for (const auto& [value, count] : value_count){
+                if (count > most_frequent_value_count){
+                    most_frequent_value_count = count;
+                }
+            }
+            
+            most_frequent_values[full_key] = most_frequent_value_count;
 
             double sel = row_count > 0 ? double(nd) / double(row_count) : 1.0;
             selectivity[full_key] = sel;
 
-            // Create histogram ONLY for numeric columns (keep your existing logic here)
             if (is_numeric[col] && !numeric_values[col].empty())
             {
                 histograms[full_key] = ColumnHistogram::create_numeric_histogram(
@@ -755,7 +767,7 @@ namespace m
                 // Extract right side (should be a constant value) - SIMPLE WAY
                 if (auto constant = cast<const ast::Constant>(binary_expr->rhs.get()))
                 {
-                    // Convert constant to string, then to double (same as your compute() method)
+
                     std::ostringstream oss;
                     oss << *constant;
                     std::string value_str = oss.str();
@@ -763,14 +775,13 @@ namespace m
                     double filter_value;
                     try
                     {
-                        filter_value = std::stod(value_str); // Same conversion as in compute()
+                        filter_value = std::stod(value_str); 
                     }
                     catch (const std::exception &)
                     {
                         continue;
                     }
 
-                    // Apply the appropriate filter based on operator - USE YOUR EXISTING METHODS
                     ColumnHistogram filtered_hist;
                     switch (binary_expr->op().type)
                     {
@@ -793,7 +804,6 @@ namespace m
                         continue; // Unsupported operator
                     }
 
-                    // Update the histogram with filtered version
                     hist_it->second = filtered_hist;
                 }
             }

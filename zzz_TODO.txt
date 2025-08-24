@@ -1,61 +1,54 @@
 TODO / Next steps
 
-[*] For next meeting
-[x] done
-[ ] open
-
 Debug:
   - size (in datamodel) is completely weird
   - If we set the cardinality, the model state is not adjusted -> I.e. histograms stay the same but the cardinality has changed
   - Look if stored source tables need to be reset on the cardinality storage
 
 
-Today:
-[x] Move card est for join to estimator // Will not do this, as each enumerator has its own way of adressing
-[x] Test DPsizeOpt
-[x] Fix / activate range based
-
-[x] Store ranges as well
-[x] Make collapse function shell selectable
-
-[x] Map out all leetcode topics
-[x] Start going over DBT slides and add anki cards (first 3 chapters)
-
-Tomorrow:
-[ ] Write Sebastian the server mail
-[ ] Check wall clock timer and add to csv
-[ ] Run complete benchmark on limited rows
-[ ] Start collecting papers on card est
-
-[ ] Read papers
-  [ ] Determine q-error calculation
-  [ ] Map out / document approaches with Zotero
-[ ] Fully finish data analysis pipeline / generate automated reporting
-[ ] Continue with anki cards -> From chapter 4 onwards
-
-[ ] Think about how to propagate the range
-
-Wednesday:
+today:
+[ ] Try implementing sampling (/ perform statistics generation during read in)
 [ ] Have one range based estimation completely run and analyzed
+[ ] Fully finish data analysis pipeline / generate automated reporting
 
 
-Side:
-[ ] Understand Gospers Hack / DpSizeOpt
+For later
+[ ] Include P-Error (Cardinality Estimation in DBMS: A Comprehensive Benchmark Evaluation)
+[ ] Include STATS / STATS-CEB benchmarks (Cardinality Estimation in DBMS: A Comprehensive Benchmark Evaluation)
+[ ] Include JOB and remove all LIKE queries
 
+
+CONFIDENCE BASED LOWE BOUND
+Inputs:
+- N_R, N_S
+- Top-k MCVs: value v_i, freq f_i(R), f_i(S)
+- Optional: NDV, fmax, min/max
+
+Algorithm:
+1. Initialize LB_join = 0
+2. For each MCV v_i:
+   a. Choose overlap probability p_i (heuristic, e.g., 0.5)
+   b. LB_i = p_i * min(f_i(R), f_i(S))
+   c. LB_join += LB_i
+3. Optionally adjust for confidence interval (e.g., binomial lower bound)
+4. Return LB_join
+5. If no MCVs available, fallback:
+   LB_join = p * min(fmax_R, fmax_S)
 
 
 Must solve:
 [ ] Make runnable on server -> Server still seems to not work POSTPONED
   [ ] Run full job-light
-[ ] Write full analysis script that just takes in the stats
 
 Naive Range Estimators
 [ ] Rule based propagation
 [ ] Histogram based propagation
 
 
-Issues:
-[ ] Statistics in general seem a bit fishy, investigate with Python to compare
+RANGE ESTIMATION IDEAS
+[ ] Simplicity done right for Join Ordering gives upper bound
+[ ] Could do full independent selectivity as lower bound and dampened selectivity as median / upper bound
+
 
 small feature:
 [ ] Make histogram bin size a system parameter
@@ -67,40 +60,6 @@ Refactoring:
   [ ] Move cardinality storage retrieval (for join) into estimator
   [ ] Split up functions in CardinalityStorage
     [ ] Matching based on operators first
-
-
-[ ] Tuesday:
-  [ ] Verify q-error calculation correctness -> Need to specify what to do when one of both is 0
-
-[ ] Wednesday:
-  [ ] Run full JOB-light for histogram + selectivity
-
-[ ] Innovation
-    [*] How to propagate ranges? UB: LB: ???
-    [*] How to create lower bound?
-
-[ ] Benchmark
-    [*] Benchmark wallclock time
-    [*] Run complete JOB-light
-    [*] Test on larger RAM
-
-[ ] estimator
-    [ ] Propagation for Range Based estimator
-    [ ] LpBound based estimator - Need to be able to extract subqueries (should be possible as it is an option)
-
-
-[ ] Presentation
-    [ ] Related work
-    [ ] Visualization
-    [ ] Core contribution
-
-[ ] Writing
-    [ ] Introduction
-    [ ] Background
-    [ ] Methodology
-    [ ] Evaluation
-    [ ] Related Work
-    [ ] Conclusion
 
 
 

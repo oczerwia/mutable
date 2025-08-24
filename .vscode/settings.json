@@ -91,6 +91,9 @@
         "barrier": "cpp",
         "latch": "cpp",
         "semaphore": "cpp",
-        "hash_set": "cpp"
+        "hash_set": "cpp",
+        "memory_resource": "cpp",
+        "type_traits": "cpp",
+        "coroutine": "cpp"
     }
 }

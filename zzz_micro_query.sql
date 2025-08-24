@@ -1,6 +1,12 @@
 CREATE DATABASE job_light;
 USE job_light;
 
+CREATE TABLE test (
+    column1 INT(4) NOT NULL PRIMARY KEY,
+    column2 INT(4) NOT NULL
+);
+IMPORT INTO test DSV "benchmark/small/data/ultra_easy.csv";
+
 CREATE TABLE table_1 (
     id INT(4) NOT NULL PRIMARY KEY,
     col_1 INT(4) NOT NULL
@@ -16,6 +22,14 @@ CREATE TABLE table_3 (
     col_3 INT(4) NOT NULL
 );
 IMPORT INTO table_3 DSV "benchmark/small/data/table3.csv";
+
+SELECT COUNT(table_1.col_1) 
+FROM table_1, table_2, table_3 
+WHERE table_1.id = table_2.id 
+    AND table_1.id = table_3.id 
+    AND table_1.col_1 < 400
+GROUP BY table_1.col_1;
+
 
 SELECT COUNT(table_1.col_1) 
 FROM table_1, table_2, table_3 

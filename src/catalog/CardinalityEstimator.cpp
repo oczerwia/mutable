@@ -766,6 +766,8 @@ ExperimentalRangeEstimator::estimate_filter(const QueryGraph &G, const DataModel
 
     result->set_stats(model.get_stats());
     result->original_tables = model.original_tables;
+    result->set_cardinality(model.size);
+    result->set_range(model.range);
 
     return result;
 }
@@ -805,12 +807,13 @@ ExperimentalRangeEstimator::estimate_grouping(const QueryGraph &G, const DataMod
     auto &model = as<const ExperimentalRangeDataModel>(data);
     auto result = std::make_unique<ExperimentalRangeDataModel>();
 
+    result->set_cardinality(model.size);
+    result->set_range(model.range);
     if (groups.empty())
     {
         result->set_range({double(1.0), double(1.0)});
+        result->set_cardinality(1.0);
     }
-    result->set_cardinality(model.size);
-
     result->set_stats(model.get_stats());
     result->original_tables = model.original_tables;
 

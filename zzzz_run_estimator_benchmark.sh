@@ -1,55 +1,88 @@
 #!/bin/bash
-# filepath: /Users/oliver/TU_BERLIN/MASTER/mutable/zzzz_run_estimator_benchmark.sh
 
-# Create output directory if it doesn't exist
-mkdir -p z_output_data_
+OUTPUT_DIR="Z_MICRO_BENCHMARK"
+if [ -d "$OUTPUT_DIR" ]; then
+  rm -rf "$OUTPUT_DIR"
+fi
+mkdir -p "$OUTPUT_DIR"
 
-# Set script variables
-SHELL_PATH="./build/debug_shared/bin/shell"
-SQL_FILE="benchmark/job-light/job-light_1.sql"
-LOG_FILE="z_output_data_/benchmark_run.log"
+PROGRAM="${PWD}/build/debug_shared/bin/shell"
 
-# Remove existing log file
-rm -f "$LOG_FILE"
+QUERY_FILE="${PWD}/benchmark/job-light/ALL_QUERIES.sql"
 
-echo "Starting benchmark run at $(date)" | tee -a "$LOG_FILE"
-echo "Results will be saved in z_output_data_/" | tee -a "$LOG_FILE"
+echo "Running all configurations from launch.json..."
 
-# Function to run a benchmark with specific estimator
-run_benchmark() {
-    local estimator=$1
-    local csv_file=$2
-    local extra_args=$3
-    
-    # Remove existing CSV file
-    rm -f "$csv_file"
-    
-    echo "----------------------------------------" | tee -a "$LOG_FILE"
-    echo "Running benchmark with $estimator estimator" | tee -a "$LOG_FILE"
-    echo "Output CSV: $csv_file" | tee -a "$LOG_FILE"
-    echo "Started at: $(date)" | tee -a "$LOG_FILE"
-    
-    # Run the benchmark
-    $SHELL_PATH $extra_args \
-      --cardinality-csv "$csv_file" \
-      --plan-enumerator GOO \
-      --cardinality-estimator "$estimator" \
-      --backend Interpreter \
-      "$SQL_FILE" 2>&1 | tee -a "$LOG_FILE"
-    
-    echo "Finished at: $(date)" | tee -a "$LOG_FILE"
-    echo "----------------------------------------" | tee -a "$LOG_FILE"
-    echo "" | tee -a "$LOG_FILE"
-}
+echo "Running CartesianProduct..."
+$PROGRAM \
+    --no-statistics \
+    --no-learn-cardinalities  \
+    --cardinality-csv ${OUTPUT_DIR}/CartesianProduct.csv \
+    --plan-enumerator GOO \
+    --cardinality-estimator CartesianProduct \
+    --backend Interpreter \
+    "$QUERY_FILE" > "${OUTPUT_DIR}/CartesianProduct_output.log" 2>&1
+echo "Output saved to ${OUTPUT_DIR}/CartesianProduct_output.log"
 
-# Run CartesianProduct estimator
-run_benchmark "CartesianProduct" "z_output_data_/CartesianProduct.csv" "--no-statistics"
+echo "Running SelectivityBased..."
+$PROGRAM \
+    --no-learn-cardinalities  \
+    --cardinality-csv ${OUTPUT_DIR}/Selecvitity.csv \
+    --plan-enumerator GOO \
+    --cardinality-estimator Selectivitybased \
+    --backend Interpreter \
+    "$QUERY_FILE" > "${OUTPUT_DIR}/SelectivityBased_output.log" 2>&1
+echo "Output saved to ${OUTPUT_DIR}/SelectivityBased_output.log"
 
-# Run SelectivityBased estimator
-run_benchmark "Selectivitybased" "z_output_data_/Selectivity.csv" ""
+echo "Running ExperimentalRangeEstimator..."
+$PROGRAM \
+    --no-learn-cardinalities  \
+    --plan-enumerator RangeGOO \
+    --cardinality-estimator ExperimentalRange \
+    --backend Interpreter \
+    --cardinality-csv ${OUTPUT_DIR}/ExperimentalRangeEstimator.csv \
+    --collapse-function UpperBound \
+    "$QUERY_FILE" > "${OUTPUT_DIR}/ExperimentalRangeEstimator_output.log" 2>&1
+echo "Output saved to ${OUTPUT_DIR}/ExperimentalRangeEstimator_output.log"
 
-# Run Histogram estimator  
-run_benchmark "Histogram" "z_output_data_/Histogram.csv" ""
+echo "Running RangeGOO..."
+$PROGRAM \
+    --no-learn-cardinalities  \
+    --plan-enumerator RangeGOO \
+    --cardinality-estimator RangeCartesianProduct \
+    --backend Interpreter \
+    --cardinality-csv ${OUTPUT_DIR}/range_first_try.csv \
+    --collapse-function UpperBound \
+    "$QUERY_FILE" > "${OUTPUT_DIR}/RangeGOO_output.log" 2>&1
+echo "Output saved to ${OUTPUT_DIR}/RangeGOO_output.log"
 
-echo "All benchmarks completed at $(date)" | tee -a "$LOG_FILE"
-echo "Log saved to $LOG_FILE"
+echo "Running Histogram..."
+$PROGRAM \
+    --no-learn-cardinalities  \
+    --cardinality-csv ${OUTPUT_DIR}/histogram.csv \
+    --plan-enumerator GOO \
+    --cardinality-estimator Histogram \
+    --backend Interpreter \
+    "$QUERY_FILE" > "${OUTPUT_DIR}/Histogram_output.log" 2>&1
+echo "Output saved to ${OUTPUT_DIR}/Histogram_output.log"
+
+echo "Running DPsizeOpt..."
+$PROGRAM \
+    --no-learn-cardinalities  \
+    --plan-enumerator DPsizeOpt \
+    --backend Interpreter \
+    --cardinality-csv ${OUTPUT_DIR}/dp_size_opt.csv \
+    --cardinality-estimator CartesianProduct \
+    "$QUERY_FILE" > "${OUTPUT_DIR}/DPsizeOpt_output.log" 2>&1
+echo "Output saved to ${OUTPUT_DIR}/DPsizeOpt_output.log"
+
+echo "Running DPsizeOpt..."
+$PROGRAM \
+    --no-learn-cardinalities  \
+    --plan-enumerator DPsizeOpt \
+    --backend Interpreter \
+    --cardinality-csv ${OUTPUT_DIR}/dp_size_opt.csv \
+    --cardinality-estimator Selectivitybased \
+    "$QUERY_FILE" > "${OUTPUT_DIR}/DPsizeOpt_selectivity.log" 2>&1
+echo "Output saved to ${OUTPUT_DIR}/DPsizeOpt_selectivity.log"
+
+echo "All configurations completed. Check the ${OUTPUT_DIR} directory for output logs."

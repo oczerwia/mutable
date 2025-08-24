@@ -1,5 +1,4 @@
 #include <mutable/catalog/CardinalityEstimator.hpp>
-
 #include "backend/Interpreter.hpp"
 #include "catalog/SpnWrapper.hpp"
 #include "util/Spn.hpp"
@@ -19,6 +18,7 @@
 #include <nlohmann/json.hpp>
 #include <mutable/catalog/TableStatistics.hpp>
 #include <mutable/parse/AST.hpp>
+// #include <mutable/catalog/RangeComparisonStrategy.hpp>
 
 using namespace m;
 
@@ -88,7 +88,7 @@ std::unique_ptr<DataModel> CartesianProductEstimator::estimate_scan(const QueryG
     auto stats_ptr = BT.table().statistics();
     model->set_stats(*stats_ptr);
     model->original_tables.insert(stats_ptr->table_name);
-    
+
     return model;
 }
 
@@ -98,9 +98,10 @@ CartesianProductEstimator::estimate_filter(const QueryGraph &G, const DataModel 
     /* This model cannot estimate the effects of applying a filter. */
     auto &data = as<const CartesianProductDataModel>(_data);
     auto model = std::make_unique<CartesianProductDataModel>(data);
-    
+
     // Check if we have stored cardinality for this filter+table combination
-    if (CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *model)) {
+    if (CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *model))
+    {
         return model;
     }
 
@@ -135,14 +136,15 @@ CartesianProductEstimator::estimate_grouping(const QueryGraph &G, const DataMode
     auto &data = as<const CartesianProductDataModel>(_data);
     auto model = std::make_unique<CartesianProductDataModel>();
 
-    if (CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *model)) {
+    if (CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *model))
+    {
         return model;
     }
     model->size = data.size;
 
     model->set_stats(data.get_stats());
     model->original_tables = data.original_tables;
-    
+
     return model;
 }
 
@@ -245,7 +247,8 @@ HistogramEstimator::estimate_filter(const QueryGraph &G, const DataModel &_data,
         return result;
     }
 
-    if (CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *result)) {
+    if (CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *result))
+    {
         return result;
     }
 
@@ -261,7 +264,7 @@ HistogramEstimator::estimate_filter(const QueryGraph &G, const DataModel &_data,
 
 std::unique_ptr<DataModel>
 HistogramEstimator::estimate_limit(const QueryGraph &, const DataModel &_data, std::size_t limit,
-                                      std::size_t offset) const
+                                   std::size_t offset) const
 {
     auto &data = as<const HistogramDataModel>(_data);
     const std::size_t remaining = offset > data.size ? 0UL : data.size - offset;
@@ -278,43 +281,46 @@ HistogramEstimator::estimate_limit(const QueryGraph &, const DataModel &_data, s
 
 std::unique_ptr<DataModel>
 HistogramEstimator::estimate_grouping(const QueryGraph &G, const DataModel &_data,
-                                         const std::vector<group_type> &groups) const
+                                      const std::vector<group_type> &groups) const
 {
     auto &data = as<const HistogramDataModel>(_data);
     auto result = std::make_unique<HistogramDataModel>(data);
 
-    if (groups.empty()) {
+    if (groups.empty())
+    {
         result->size = 1;
         return result;
     }
-    if (CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *result)) {
+    if (CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *result))
+    {
         return result;
     }
 
     std::vector<std::string> group_columns;
-    for (const auto &[grp, alias] : groups) {
+    for (const auto &[grp, alias] : groups)
+    {
         std::string col_name = extract_column_name_from_expression(grp);
-        if (!col_name.empty()) {
+        if (!col_name.empty())
+        {
             group_columns.push_back(col_name);
         }
     }
 
     auto current_stats = result->get_stats();
     result->size = current_stats.estimate_group_by_cardinality(group_columns);
-    
+
     auto grouped_stats = current_stats.apply_group_by(group_columns);
-    
+
     grouped_stats = grouped_stats.rescale_histograms_to_cardinality(result->size);
-    
+
     result->set_stats(grouped_stats);
-    
+
     return result;
 }
 
-
 std::unique_ptr<DataModel>
 HistogramEstimator::estimate_join(const QueryGraph &G, const DataModel &_left, const DataModel &_right,
-                                     const cnf::CNF &condition) const
+                                  const cnf::CNF &condition) const
 {
     auto &left = as<const HistogramDataModel>(_left);
     auto &right = as<const HistogramDataModel>(_right);
@@ -324,14 +330,20 @@ HistogramEstimator::estimate_join(const QueryGraph &G, const DataModel &_left, c
     auto right_stats = right.get_stats();
 
     std::vector<std::pair<std::string, std::string>> join_pairs;
-    for (const auto &join : G.joins()) {
+    for (const auto &join : G.joins())
+    {
         auto join_condition = join->condition();
-        if (!join_condition.empty()) {
+        if (!join_condition.empty())
+        {
             auto join_columns = join_condition.get_join_columns();
-            for (const auto &[table, columns] : join_columns) {
-                if (!columns.empty()) {
-                    for (const auto &[other_table, other_columns] : join_columns) {
-                        if (table != other_table && !other_columns.empty()) {
+            for (const auto &[table, columns] : join_columns)
+            {
+                if (!columns.empty())
+                {
+                    for (const auto &[other_table, other_columns] : join_columns)
+                    {
+                        if (table != other_table && !other_columns.empty())
+                        {
                             std::string left_col = table + "." + *columns.begin();
                             std::string right_col = other_table + "." + *other_columns.begin();
                             join_pairs.emplace_back(left_col, right_col);
@@ -343,35 +355,41 @@ HistogramEstimator::estimate_join(const QueryGraph &G, const DataModel &_left, c
             }
         }
     }
-    
-    if (join_pairs.empty()) {
+
+    if (join_pairs.empty())
+    {
         result->size = left.size * right.size;
-    } else {
+    }
+    else
+    {
         bool found_valid_histogram = false;
-        
-        for (const auto &[left_col, right_col] : join_pairs) {
+
+        for (const auto &[left_col, right_col] : join_pairs)
+        {
             auto join_hist = left_stats.multiply_histograms(left_col, right_col);
-            if (join_hist.is_valid()) {
+            if (join_hist.is_valid())
+            {
                 result->size = std::accumulate(join_hist.bins.begin(), join_hist.bins.end(), 0UL);
                 found_valid_histogram = true;
                 break;
             }
         }
-        
-        if (!found_valid_histogram) {
+
+        if (!found_valid_histogram)
+        {
             result->size = left.size * right.size;
         }
     }
 
     auto merged = left_stats.merge_for_join(right_stats);
     merged.row_count = result->size;
-    
+
     merged = merged.rescale_histograms_to_cardinality(result->size);
-    
+
     std::set<std::string> all_tables = left.original_tables;
     all_tables.insert(right.original_tables.begin(), right.original_tables.end());
     result->original_tables = all_tables;
-    
+
     result->set_stats(merged);
     return result; // there is no joined column on what we can run the next join in the result section
     // NOTE: We will keep it like that and write it down as an assumption
@@ -380,7 +398,7 @@ HistogramEstimator::estimate_join(const QueryGraph &G, const DataModel &_left, c
 template <typename PlanTable>
 std::unique_ptr<DataModel>
 HistogramEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph &G, Subproblem to_join,
-                                  const cnf::CNF &condition) const
+                               const cnf::CNF &condition) const
 {
     M_insist(not to_join.empty());
 
@@ -409,10 +427,10 @@ HistogramEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const Quer
 
 template std::unique_ptr<DataModel>
 HistogramEstimator::operator()(estimate_join_all_tag, const PlanTableSmallOrDense &, const QueryGraph &,
-                                  Subproblem, const cnf::CNF &) const;
+                               Subproblem, const cnf::CNF &) const;
 template std::unique_ptr<DataModel>
 HistogramEstimator::operator()(estimate_join_all_tag, const PlanTableLargeAndSparse &, const QueryGraph &,
-                                  Subproblem, const cnf::CNF &) const;
+                               Subproblem, const cnf::CNF &) const;
 
 std::size_t HistogramEstimator::predict_cardinality(const DataModel &data) const
 {
@@ -427,9 +445,9 @@ std::size_t HistogramEstimator::estimate_cardinality_from_histograms(const Table
         return 1;
     }
 
-    // TODO: 
+    // TODO:
     // Via independence assumption, we should adjust every histogram after a filter
-    // by rescaling the histogram to the new number of rows and cutting the NDV appropriatly 
+    // by rescaling the histogram to the new number of rows and cutting the NDV appropriatly
     // (assume equal distribution of NDV per bucket)
     // Then we should just return the size after all filters (which should be equal on all histograms)
     // This means that this method should just return the size of any histogram within the table statistics
@@ -490,16 +508,19 @@ std::vector<std::pair<std::string, std::string>> HistogramEstimator::extract_equ
 
 std::string HistogramEstimator::extract_column_name_from_expression(const ast::Expr &expr) const
 {
-    if (auto designator = cast<const ast::Designator>(&expr)) {
-        if (designator->has_table_name()) {
+    if (auto designator = cast<const ast::Designator>(&expr))
+    {
+        if (designator->has_table_name())
+        {
             return std::string(*designator->table_name.text) + "." + *designator->attr_name.text;
-        } else {
+        }
+        else
+        {
             return std::string(*designator->attr_name.text);
         }
     }
     return ""; // Add fallback for other expression types
 }
-
 
 M_LCOV_EXCL_START
 void HistogramEstimator::print(std::ostream &out) const
@@ -593,7 +614,6 @@ RangeCartesianProductEstimator::estimate_grouping(const QueryGraph &G, const Dat
 {
     auto &model = as<const RangeCartesianProductDataModel>(data);
     auto result = std::make_unique<RangeCartesianProductDataModel>();
-
 
     std::size_t size = std::min(model.size, std::size_t(groups.empty() ? 1 : model.size));
     result->set_cardinality(size);
@@ -703,6 +723,228 @@ std::size_t RangeCartesianProductEstimator::predict_cardinality(const DataModel 
 void RangeCartesianProductEstimator::print(std::ostream &out) const
 {
     out << "RangeCartesianProductEstimator";
+}
+
+/*======================================================================================================================
+ * ExperimentalRangeEstimatorEstimator
+ *====================================================================================================================*/
+
+std::unique_ptr<DataModel> ExperimentalRangeEstimator::empty_model() const
+{
+    auto model = std::make_unique<ExperimentalRangeDataModel>();
+    model->set_cardinality(0);
+    model->set_range({0.0, 0.0});
+
+    return model;
+}
+
+std::unique_ptr<DataModel> ExperimentalRangeEstimator::estimate_scan(const QueryGraph &G, Subproblem P) const
+{
+    M_insist(P.size() == 1, "Subproblem must identify exactly one DataSource");
+    auto idx = *P.begin();
+    auto &BT = as<const BaseTable>(*G.sources()[idx]);
+    double num_rows = static_cast<double>(BT.table().store().num_rows());
+
+    auto model = std::make_unique<ExperimentalRangeDataModel>(num_rows);
+    model->set_cardinality(num_rows);
+    model->set_range({num_rows, num_rows});
+
+    auto stats_ptr = BT.table().statistics();
+    model->set_stats(*stats_ptr);
+    model->original_tables.insert(stats_ptr->table_name);
+
+
+    return model;
+}
+
+std::unique_ptr<DataModel>
+ExperimentalRangeEstimator::estimate_filter(const QueryGraph &G, const DataModel &data, const cnf::CNF &filter) const
+{
+    auto &model = as<const ExperimentalRangeDataModel>(data);
+    auto result = std::make_unique<ExperimentalRangeDataModel>();
+    result->set_cardinality(model.size);
+
+    result->set_stats(model.get_stats());
+    result->original_tables = model.original_tables;
+
+    return result;
+}
+
+std::unique_ptr<DataModel>
+ExperimentalRangeEstimator::estimate_limit(const QueryGraph &G, const DataModel &data, std::size_t limit,
+                                           std::size_t offset) const
+{
+    auto &model = as<const ExperimentalRangeDataModel>(data);
+    auto result = std::make_unique<ExperimentalRangeDataModel>();
+
+    auto range_ = model.get_range();
+    if (range_.second > limit)
+    {
+        result->set_range({limit, limit});
+    }
+    else
+    {
+        result->set_range({limit, range_.second});
+    }
+    result->set_cardinality(model.size);
+
+
+    auto stats = result->get_stats();
+    stats.row_count = result->size;
+    result->set_stats(stats);
+
+    result->original_tables = data.original_tables;
+
+    return result;
+}
+
+std::unique_ptr<DataModel>
+ExperimentalRangeEstimator::estimate_grouping(const QueryGraph &G, const DataModel &data,
+                                              const std::vector<group_type> &groups) const
+{
+    auto &model = as<const ExperimentalRangeDataModel>(data);
+    auto result = std::make_unique<ExperimentalRangeDataModel>();
+
+    if (groups.empty())
+    {
+        result->set_range({double(1.0), double(1.0)});
+    }
+    result->set_cardinality(model.size);
+
+    result->set_stats(model.get_stats());
+    result->original_tables = model.original_tables;
+
+    return result;
+}
+
+std::unique_ptr<DataModel>
+ExperimentalRangeEstimator::estimate_join(const QueryGraph &G, const DataModel &left, const DataModel &right,
+                                          const cnf::CNF &condition) const
+{
+    auto &left_model = as<const ExperimentalRangeDataModel>(left);
+    auto &right_model = as<const ExperimentalRangeDataModel>(right);
+    auto result = std::make_unique<ExperimentalRangeDataModel>();
+
+    auto left_stats = left.get_stats();
+    auto right_stats = right.get_stats();
+
+    // Find join columns
+    std::set<std::string> left_tables = left_model.original_tables;
+    std::set<std::string> right_tables = right_model.original_tables;
+    std::vector<std::pair<std::string, std::string>> join_pairs;
+
+    for (const auto &join : G.joins())
+    {
+        auto join_condition = join->condition();
+        if (join_condition.empty())
+            continue;
+
+        auto join_columns = join_condition.get_join_columns();
+
+        for (const auto &left_table : left_tables)
+        {
+            for (const auto &right_table : right_tables)
+            {
+                if (join_columns.count(left_table) && join_columns.count(right_table))
+                {
+                    const auto &left_cols = join_columns.at(left_table);
+                    const auto &right_cols = join_columns.at(right_table);
+
+                    if (!left_cols.empty() && !right_cols.empty())
+                    {
+                        std::string left_col = left_table + "." + *left_cols.begin();
+                        std::string right_col = right_table + "." + *right_cols.begin();
+                        join_pairs.emplace_back(left_col, right_col);
+                    }
+                }
+            }
+        }
+    }
+
+    // Lower bound computation
+    double lower_bound = 0;
+    for (const auto &[left_col, right_col] : join_pairs)
+    {
+        double N_R = left_stats.row_count;
+        double N_S = right_stats.row_count;
+
+        double NDV_R = left_stats.distinct_counts.count(left_col) ? left_stats.distinct_counts.at(left_col) : 1;
+        double NDV_S = right_stats.distinct_counts.count(right_col) ? right_stats.distinct_counts.at(right_col) : 1;
+
+        double fmax_R = left_stats.most_frequent_values.count(left_col) ? left_stats.most_frequent_values.at(left_col) : 1;
+        double fmax_S = right_stats.most_frequent_values.count(right_col) ? right_stats.most_frequent_values.at(right_col) : 1;
+
+        double LB_NDV = (N_R * N_S) / std::max(NDV_R, NDV_S);
+        double LB_freq = std::max(fmax_R, fmax_S);
+
+        lower_bound = std::max(lower_bound, std::max(LB_NDV, LB_freq));
+    }
+
+    // Upper bound computation
+    double prev_upper = left_model.size;
+    double right_size = right_model.size;
+    double upper_bound = std::min(prev_upper, right_size) * left_model.mf_product * right_model.mf_product;
+
+    // Set cardinality and range
+    result->set_cardinality((lower_bound + upper_bound) / 2); // Midpoint estimate
+    result->set_range({lower_bound, upper_bound});
+
+    // Merge stats and tables
+    auto merged_stats = left_stats.merge_for_join(right_stats);
+    merged_stats.row_count = result->size;
+    result->set_stats(merged_stats);
+
+    std::set<std::string> all_tables = left_model.original_tables;
+    all_tables.insert(right_model.original_tables.begin(), right_model.original_tables.end());
+    result->original_tables = all_tables;
+
+    return result;
+}
+
+template <typename PlanTable>
+std::unique_ptr<DataModel>
+ExperimentalRangeEstimator::operator()(estimate_join_all_tag, PlanTable &&PT, const QueryGraph &G, Subproblem to_join,
+                                       const cnf::CNF &condition) const
+{
+    M_insist(not to_join.empty());
+    auto model = std::make_unique<ExperimentalRangeDataModel>();
+    model->set_cardinality(1UL);
+    model->set_range({1.0, 1.0});
+
+    std::pair<double, double> total_range = {1.0, 1.0};
+
+    for (auto it = to_join.begin(); it != to_join.end(); ++it)
+    {
+        auto submodel = as<const ExperimentalRangeDataModel>(*PT[it.as_set()].model);
+        model->set_cardinality(model->size * submodel.size);
+
+        // Multiply ranges
+        if (submodel.has_range())
+        {
+            auto range = submodel.get_range();
+            total_range.first *= range.first;
+            total_range.second *= range.second;
+        }
+        else
+        {
+            total_range.first *= submodel.size;
+            total_range.second *= submodel.size;
+        }
+    }
+
+    model->set_range(total_range);
+    return model;
+}
+
+std::size_t ExperimentalRangeEstimator::predict_cardinality(const DataModel &data) const
+{
+    auto &model = as<const ExperimentalRangeDataModel>(data);
+    return model.get_range().second;
+}
+
+void ExperimentalRangeEstimator::print(std::ostream &out) const
+{
+    out << "ExperimentalRangeEstimator";
 }
 
 /*======================================================================================================================
@@ -1505,7 +1747,8 @@ SelectivityEstimator::estimate_filter(const QueryGraph &G, const DataModel &data
     if (filter.empty())
         return m;
 
-    if (CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *m)) {
+    if (CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *m))
+    {
         return m;
     }
     double sel = 1.0;
@@ -1537,31 +1780,37 @@ SelectivityEstimator::estimate_join(const QueryGraph &G,
 
     auto left_stats = lm.get_stats();
     auto right_stats = rm.get_stats();
-    
+
     // Get all tables involved in left and right sides
     std::set<std::string> left_tables = lm.original_tables;
     std::set<std::string> right_tables = rm.original_tables;
-    
+
     // Find join pairs that connect ANY table from left side to ANY table from right side
     std::vector<std::pair<std::string, std::string>> join_pairs;
-    
-    for (const auto &join : G.joins()) {
+
+    for (const auto &join : G.joins())
+    {
         auto join_condition = join->condition();
-        if (join_condition.empty()) continue;
-        
+        if (join_condition.empty())
+            continue;
+
         auto join_columns = join_condition.get_join_columns();
-        
+
         // Check if this join connects left side to right side
         bool connects_left_to_right = false;
-        
-        for (const auto &left_table : left_tables) {
-            for (const auto &right_table : right_tables) {
-                if (join_columns.count(left_table) && join_columns.count(right_table)) {
+
+        for (const auto &left_table : left_tables)
+        {
+            for (const auto &right_table : right_tables)
+            {
+                if (join_columns.count(left_table) && join_columns.count(right_table))
+                {
                     // Found a join that connects left_table to right_table
                     const auto &left_cols = join_columns.at(left_table);
                     const auto &right_cols = join_columns.at(right_table);
-                    
-                    if (!left_cols.empty() && !right_cols.empty()) {
+
+                    if (!left_cols.empty() && !right_cols.empty())
+                    {
                         std::string left_col = left_table + "." + *left_cols.begin();
                         std::string right_col = right_table + "." + *right_cols.begin();
                         join_pairs.emplace_back(left_col, right_col);
@@ -1570,18 +1819,24 @@ SelectivityEstimator::estimate_join(const QueryGraph &G,
                 }
             }
         }
-        
-        if (connects_left_to_right) break;
+
+        if (connects_left_to_right)
+            break;
     }
-    
+
     // Apply selectivity estimation
     double sel = 1.0;
-    if (join_pairs.empty()) {
+    if (join_pairs.empty())
+    {
         m->size = lm.size * rm.size; // Cartesian product
-    } else {
-        for (const auto &[left_col, right_col] : join_pairs) {
-            if (left_stats.distinct_counts.count(left_col) && 
-                right_stats.distinct_counts.count(right_col)) {
+    }
+    else
+    {
+        for (const auto &[left_col, right_col] : join_pairs)
+        {
+            if (left_stats.distinct_counts.count(left_col) &&
+                right_stats.distinct_counts.count(right_col))
+            {
                 auto nd1 = left_stats.distinct_counts.at(left_col);
                 auto nd2 = right_stats.distinct_counts.at(right_col);
                 sel *= 1.0 / double(std::max(nd1, nd2));
@@ -1593,15 +1848,16 @@ SelectivityEstimator::estimate_join(const QueryGraph &G,
     // Merge statistics and track original tables
     auto merged = left_stats.merge_for_join(right_stats);
     merged.row_count = m->size;
-    
+
     // Combine original tables
     std::set<std::string> all_tables = left_tables;
     all_tables.insert(right_tables.begin(), right_tables.end());
-    
-    for (auto &kv : merged.distinct_counts) {
+
+    for (auto &kv : merged.distinct_counts)
+    {
         merged.selectivity[kv.first] = double(kv.second) / double(merged.row_count);
     }
-    
+
     m->set_stats(merged);
     m->original_tables = all_tables;
     return m;
@@ -1617,36 +1873,41 @@ SelectivityEstimator::estimate_grouping(const QueryGraph &G, const DataModel &da
         m->size = 1;
         return m;
     }
-    if (CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *m)) {
+    if (CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *m))
+    {
         return m;
     }
     auto stats = m->get_stats();
     double prod = 1.0;
-    
+
     for (auto &pr : groups)
     {
         std::string col = extract_column_name_from_expression(pr.first);
-        
+
         // Use distinct_counts instead of histograms
-        if (stats.distinct_counts.count(col)) {
+        if (stats.distinct_counts.count(col))
+        {
             prod *= double(stats.distinct_counts.at(col));
-        } else {
+        }
+        else
+        {
             // Fallback: assume column has moderate distinctness
             prod *= dm.size;
         }
     }
-    
+
     m->size = static_cast<std::size_t>(prod);
-    
+
     // Update statistics for the grouped result
     auto new_stats = m->get_stats();
     new_stats.row_count = m->size;
-    
+
     // Recompute selectivities based on new row count
-    for (auto &kv : new_stats.distinct_counts) {
+    for (auto &kv : new_stats.distinct_counts)
+    {
         new_stats.selectivity[kv.first] = double(kv.second) / double(new_stats.row_count);
     }
-    
+
     m->set_stats(new_stats);
     return m;
 }
@@ -1661,13 +1922,16 @@ SelectivityEstimator::estimate_limit(const QueryGraph &G, const DataModel &data,
     return m;
 }
 
-
 std::string SelectivityEstimator::extract_column_name_from_expression(const ast::Expr &expr) const
 {
-    if (auto designator = cast<const ast::Designator>(&expr)) {
-        if (designator->has_table_name()) {
+    if (auto designator = cast<const ast::Designator>(&expr))
+    {
+        if (designator->has_table_name())
+        {
             return std::string(*designator->table_name.text) + "." + *designator->attr_name.text;
-        } else {
+        }
+        else
+        {
             return std::string(*designator->attr_name.text);
         }
     }
@@ -1678,8 +1942,9 @@ std::string SelectivityEstimator::extract_column_name_from_expression(const ast:
     X(CartesianProductEstimator, "CartesianProduct", "estimates cardinalities as Cartesian product") \
     X(InjectionCardinalityEstimator, "Injected", "estimates cardinalities based on a JSON file")     \
     X(SpnEstimator, "Spn", "estimates cardinalities based on Sum-Product Networks")                  \
-    X(HistogramEstimator, "Histogram", "Used to test new estimation")                          \
-    X(SelectivityEstimator, "Selectivitybased", "Used to test new estimation")                       \
+    X(HistogramEstimator, "Histogram", "Purely histogram based estimation")                          \
+    X(SelectivityEstimator, "Selectivitybased", "Purely selectivity based estimation")               \
+    X(ExperimentalRangeEstimator, "ExperimentalRange", "Used to test new estimation")                \
     X(RangeCartesianProductEstimator, "RangeCartesianProduct", "range-aware cardinality estimator")
 
 #define INSTANTIATE(TYPE, _1, _2)                                                                             \

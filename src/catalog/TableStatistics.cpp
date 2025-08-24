@@ -324,6 +324,10 @@ namespace m
 
             std::unordered_map<Value, int> value_count;
 
+            // TEST SAMPLING
+            // std::mt19937 rng(std::random_device{}());
+            // auto sampled_values = table.store().sample_column(col, 3, rng);
+
             // For each row, extract the value as a single-column Tuple
             auto loader = Interpreter::compile_load(schema, table.store().memory().addr(), table.layout(), schema, 0, 0);
             Tuple tuple(schema);

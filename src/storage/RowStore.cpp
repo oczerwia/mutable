@@ -9,6 +9,9 @@
 #include <mutable/catalog/Type.hpp>
 #include <mutable/util/fn.hpp>
 #include <typeinfo>
+#include <random>
+#include <vector>
+#include <cstring>
 
 
 using namespace m;
@@ -61,6 +64,10 @@ void RowStore::compute_offsets()
     row_size_ = off;
 
     delete[] attrs;
+}
+
+std::vector<Tuple> RowStore::sample_column(std::size_t attr_id, std::size_t sample_size, std::mt19937 &rng) const {
+    return {};
 }
 
 M_LCOV_EXCL_START

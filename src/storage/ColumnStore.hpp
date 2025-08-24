@@ -11,7 +11,7 @@ namespace m {
 struct ColumnStore : Store
 {
 #ifndef NDEBUG
-    static constexpr std::size_t ALLOCATION_SIZE = 1UL << 37; ///< 20 GiB
+    static constexpr std::size_t ALLOCATION_SIZE = 1UL << 25; ///< 1 GiB
 #else
     static constexpr std::size_t ALLOCATION_SIZE = 1UL << 37; ///< 128 GiB
 #endif
@@ -52,6 +52,7 @@ struct ColumnStore : Store
         auto offset = ALLOCATION_SIZE * attr_id;
         return reinterpret_cast<uint8_t*>(data_.addr()) + offset;
     }
+    std::vector<Tuple> sample_column(std::size_t attr_id, std::size_t sample_size, std::mt19937 &rng) const override;
 
     void dump(std::ostream &out) const override;
     using Store::dump;

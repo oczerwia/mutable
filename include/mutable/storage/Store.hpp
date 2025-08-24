@@ -7,6 +7,9 @@
 #include <mutable/util/memory.hpp>
 #include <string>
 #include <unordered_map>
+#include <vector>
+#include <random>
+#include <mutable/IR/Tuple.hpp>
 
 
 namespace m {
@@ -46,6 +49,10 @@ struct M_EXPORT Store
 
     /** Drop the most recently appended row. */
     virtual void drop() = 0;
+
+    // Allow to sample from a store
+    virtual std::vector<Tuple> sample_column(std::size_t attr_id, std::size_t sample_size, std::mt19937 &rng) const = 0;
+
 
     virtual void dump(std::ostream &out) const = 0;
     void dump() const;

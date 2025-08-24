@@ -55,6 +55,8 @@ struct PaxStore : Store
     /** Returns the memory of the store. */
     const memory::Memory & memory() const override { return data_; }
 
+    std::vector<Tuple> sample_column(std::size_t attr_id, std::size_t sample_size, std::mt19937 &rng) const override;
+
     void dump(std::ostream &out) const override;
     using Store::dump;
 

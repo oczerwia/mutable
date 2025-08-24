@@ -90,6 +90,11 @@ void PaxStore::compute_block_offsets()
     delete[] attrs;
 }
 
+std::vector<Tuple> PaxStore::sample_column(std::size_t attr_id, std::size_t sample_size, std::mt19937 &rng) const {
+    // Will omit PAXStore in my thesis
+    return {};
+}
+
 M_LCOV_EXCL_START
 void PaxStore::dump(std::ostream &out) const
 {

@@ -55,6 +55,9 @@ struct RowStore : Store
     /** Sets the memory of the store to `memory`. */
     void memory(memory::Memory memory) { data_ = std::move(memory); }
 
+    std::vector<Tuple> sample_column(std::size_t attr_id, std::size_t sample_size, std::mt19937 &rng) const override;
+
+
     void dump(std::ostream &out) const override;
     using Store::dump;
 

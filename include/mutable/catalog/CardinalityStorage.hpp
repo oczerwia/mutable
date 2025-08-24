@@ -950,6 +950,7 @@ namespace m
                         << "\"" << filters << "\","
                         << "\"" << group_by << "\","
                         << data->estimated_range.first << ","
+                        << data->estimated_range.second << ","
                         << this->current_query_timings["Read DSV file"] << ","
                         << this->current_query_timings["Construct the query graph"] << ","
                         << this->current_query_timings["Compute the logical query plan"] << ","

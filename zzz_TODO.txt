@@ -1,5 +1,34 @@
 TODO / Next steps
 
+
+To do for wochenende:
+
+- Implement 'real' LEO optimizer
+  - Partition storage by operator
+  - implement decay function over operator
+  - do non-exact matching (i.e. just match on operators and not exact filter matches)
+  - store error factor as well
+
+- compute min and max of table for table statistics
+- Continue with sampling (dirty implement by going over complete table)
+- Make sampling size hyperparameter to see if bounds actually decrease or not
+- Questions:
+  - Do I need to fix the physical operators to ensure I only compare execution times?
+
+- Ponder / read paper on lower bounds method
+
+
+After weekend:
+
+- Read more papers
+- continue on outline
+
+End of next week
+- Start building presentation
+- Prepare first storyline
+- get books on distributed systems and stream processing
+
+
 Debug:
   - size (in datamodel) is completely weird
   - If we set the cardinality, the model state is not adjusted -> I.e. histograms stay the same but the cardinality has changed
@@ -40,19 +69,6 @@ Must solve:
 [ ] Make runnable on server -> Server still seems to not work POSTPONED
   [ ] Run full job-light
 
-Naive Range Estimators
-[ ] Rule based propagation
-[ ] Histogram based propagation
-
-
-RANGE ESTIMATION IDEAS
-[ ] Simplicity done right for Join Ordering gives upper bound
-[ ] Could do full independent selectivity as lower bound and dampened selectivity as median / upper bound
-
-
-small feature:
-[ ] Make histogram bin size a system parameter
-[ ] Implement sampling for statistics
 
 Refactoring:
   [ ] Understand and clean complete cardinalityStorage

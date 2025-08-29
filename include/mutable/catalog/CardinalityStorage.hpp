@@ -78,6 +78,9 @@ namespace m
         double estimated_cardinality = -1.0;
         double true_cardinality = -1.0;
         std::pair<double, double> estimated_range = {-1.0, -1.0};
+        double adjustment_factor = 1.0; // LEO optimizer adjustment factor
+
+
         std::size_t operator_order = 0;
         OperatorType operator_type = OperatorType::OTHER;
         std::string operator_name;
@@ -248,6 +251,20 @@ namespace m
                 clauses.insert(oss.str());
             }
             return clauses;
+        }
+
+        /**
+         * @brief This is used to calculate the LEO style adjustmeht factor
+         *
+         * @param data CardinalityData
+         * @param alpha Smoothing factor (we use a default initialization of 0.2)
+         * @param prev previous adjustment factor (if there is none, we default to 1.0)
+         */
+        static void update_adjustment_factor(CardinalityData& data, double alpha = 0.2, double prev_adjustment_factor = 1.0) {
+            if (data.estimated_cardinality > 0.0 && data.true_cardinality > 0.0) {
+                double error = data.true_cardinality / data.estimated_cardinality;
+                data.adjustment_factor = alpha * error + (1.0 - alpha) * prev_adjustment_factor;
+            }
         }
 
         bool has_stored_cardinality(SmallBitset involved_tables)
@@ -520,15 +537,12 @@ namespace m
         void map_true_cardinalities_to_logical_plan_(const Operator &root)
         {
 
-            // Clear previous data
             current_cardinality_data.clear();
 
             reset_traverse_counter_();
 
-            // Traverse and collect cardinalities
             traverse_operator_tree_(root);
 
-            // Debug output
             if (debug_output_)
             {
                 std::cout << "\nCollected " << current_cardinality_data.size() << " cardinality entries." << std::endl;
@@ -543,7 +557,9 @@ namespace m
                                   << "-" << data->estimated_range.second << "]";
                     }
 
-                    std::cout << ", actual=" << data->true_cardinality << std::endl;
+                    std::cout << ", actual=" << data->true_cardinality;
+
+                    std::cout << ", adjustment=" << data->adjustment_factor << std::endl;
 
                     std::cout << "    Tables: ";
                     for (const auto &name : data->table_names)
@@ -630,7 +646,7 @@ namespace m
                 temp_cardinalities.push_back(new_cardinality);
             }
 
-            for (const CardinalityData &new_cardinality : temp_cardinalities)
+            for (CardinalityData &new_cardinality : temp_cardinalities)
             {
                 bool found_existing = false;
                 for (std::shared_ptr<CardinalityData> &existing_cardinality : stored_cardinalities_)
@@ -645,6 +661,8 @@ namespace m
                         existing_cardinality->estimated_range = new_cardinality.estimated_range;
                         existing_cardinality->estimated_cardinality = new_cardinality.estimated_cardinality;
                         existing_cardinality->group_by_columns = new_cardinality.group_by_columns;
+                        auto previous_adjustment_factor = existing_cardinality->adjustment_factor;
+                        update_adjustment_factor(*existing_cardinality, 0.2, existing_cardinality->adjustment_factor);
                         found_existing = true;
 
                         if (debug_output_)
@@ -677,6 +695,7 @@ namespace m
                                 std::cout << ", range=[" << existing_cardinality->estimated_range.first
                                           << "-" << existing_cardinality->estimated_range.second << "]";
                             }
+                            std:: cout << ", adjustment=" << previous_adjustment_factor << "->" << existing_cardinality->adjustment_factor;
                             std::cout << std::endl;
                         }
                         break;
@@ -685,6 +704,7 @@ namespace m
 
                 if (!found_existing && new_cardinality.operator_type != OperatorType::OTHER)
                 {
+                    update_adjustment_factor(new_cardinality, 0.2, 1.0);
                     stored_cardinalities_.push_back(std::make_shared<CardinalityData>(new_cardinality));
 
                     if (debug_output_)
@@ -717,6 +737,7 @@ namespace m
                             std::cout << ", range=[" << new_cardinality.estimated_range.first
                                       << "-" << new_cardinality.estimated_range.second << "]";
                         }
+                        std::cout << ", adjustment=" << new_cardinality.adjustment_factor;
                         std::cout << std::endl;
                     }
                 }
@@ -912,7 +933,7 @@ namespace m
             }
             
             if (csv_file.tellp() == 0) {
-                csv_file << "query_id,operator_id,operator_type,tables,est_card,true_card,q_error,filter_conditions,group_by_columns,lower_bound,upper_bound,dsv_time,qg_constuct_time,lqp_time,plan_enum_time,create_backend_time,pqp_time,exec_query_time\n";
+                csv_file << "query_id,operator_id,operator_type,tables,est_card,true_card,q_error,filter_conditions,group_by_columns,lower_bound,upper_bound,adjustment_factor,dsv_time,qg_constuct_time,lqp_time,plan_enum_time,create_backend_time,pqp_time,exec_query_time\n";
             }
             
             for (const auto& data : current_cardinality_data) {
@@ -951,6 +972,7 @@ namespace m
                         << "\"" << group_by << "\","
                         << data->estimated_range.first << ","
                         << data->estimated_range.second << ","
+                        << data->adjustment_factor << ","
                         << this->current_query_timings["Read DSV file"] << ","
                         << this->current_query_timings["Construct the query graph"] << ","
                         << this->current_query_timings["Compute the logical query plan"] << ","

@@ -9,6 +9,14 @@ To do for wochenende:
   - do non-exact matching (i.e. just match on operators and not exact filter matches)
   - store error factor as well
 
+
+Leo step by step plan
+
+- compute the error adjustment rate and store it (no need for vector since we use the previous value only)
+- do non-exact matching (ACHTUNG: Nicht die bestehende Struktur löschen, sonst funktioniert der csv export nichtmehr)
+- do not do the operator partitioning
+
+
 - compute min and max of table for table statistics
 - Continue with sampling (dirty implement by going over complete table)
 - Make sampling size hyperparameter to see if bounds actually decrease or not

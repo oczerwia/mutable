@@ -255,15 +255,17 @@ namespace m
 
         /**
          * @brief This is used to calculate the LEO style adjustmeht factor
+         * We first factor out the old adjustment_rate
+         * Then we calculate the new one
+         * Code can be found in section 4.3 of the LEO paper
          *
          * @param data CardinalityData
          * @param alpha Smoothing factor (we use a default initialization of 0.2)
-         * @param prev previous adjustment factor (if there is none, we default to 1.0)
          */
-        static void update_adjustment_factor(CardinalityData& data, double alpha = 0.2, double prev_adjustment_factor = 1.0) {
+        static void update_adjustment_factor(CardinalityData& data, double alpha = 0.2) {
             if (data.estimated_cardinality > 0.0 && data.true_cardinality > 0.0) {
-                double error = data.true_cardinality / data.estimated_cardinality;
-                data.adjustment_factor = alpha * error + (1.0 - alpha) * prev_adjustment_factor;
+                double prev_adjustment_factor = data.adjustment_factor;
+                data.adjustment_factor = data.true_cardinality * prev_adjustment_factor / data.estimated_cardinality;
             }
         }
 
@@ -515,6 +517,7 @@ namespace m
                 }
             }
 
+            update_adjustment_factor(*data, 0.2);
             current_cardinality_data.push_back(data);
             return data;
         }
@@ -661,8 +664,9 @@ namespace m
                         existing_cardinality->estimated_range = new_cardinality.estimated_range;
                         existing_cardinality->estimated_cardinality = new_cardinality.estimated_cardinality;
                         existing_cardinality->group_by_columns = new_cardinality.group_by_columns;
-                        auto previous_adjustment_factor = existing_cardinality->adjustment_factor;
-                        update_adjustment_factor(*existing_cardinality, 0.2, existing_cardinality->adjustment_factor);
+                        update_adjustment_factor(new_cardinality, 0.2);
+                        auto old_adjustment_factor = existing_cardinality->adjustment_factor;
+                        existing_cardinality->adjustment_factor = new_cardinality.adjustment_factor;
                         found_existing = true;
 
                         if (debug_output_)
@@ -695,7 +699,7 @@ namespace m
                                 std::cout << ", range=[" << existing_cardinality->estimated_range.first
                                           << "-" << existing_cardinality->estimated_range.second << "]";
                             }
-                            std:: cout << ", adjustment=" << previous_adjustment_factor << "->" << existing_cardinality->adjustment_factor;
+                            std:: cout << ", adjustment=" << old_adjustment_factor << "->" << existing_cardinality->adjustment_factor;
                             std::cout << std::endl;
                         }
                         break;
@@ -704,7 +708,7 @@ namespace m
 
                 if (!found_existing && new_cardinality.operator_type != OperatorType::OTHER)
                 {
-                    update_adjustment_factor(new_cardinality, 0.2, 1.0);
+                    update_adjustment_factor(new_cardinality, 0.2);
                     stored_cardinalities_.push_back(std::make_shared<CardinalityData>(new_cardinality));
 
                     if (debug_output_)

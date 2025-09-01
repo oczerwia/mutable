@@ -15,21 +15,25 @@ Leo step by step plan
 - compute the error adjustment rate and store it (no need for vector since we use the previous value only)
 - do non-exact matching (ACHTUNG: Nicht die bestehende Struktur löschen, sonst funktioniert der csv export nichtmehr)
 - do not do the operator partitioning
+- need to add two seperate adjustment factors for the bounds
 
 
-- compute min and max of table for table statistics
-- Continue with sampling (dirty implement by going over complete table)
+Today:
+- add two error adjustment values for the ranges (with some alpha value)
+- compute min and max for table statistics
+- Dirty implement sampling
 - Make sampling size hyperparameter to see if bounds actually decrease or not
+
+- Continue adding anki cards (DBMS)
+
+
+tomorrow:
+- Test whether the true outputs are acutally real with python test joins
 - Questions:
   - Do I need to fix the physical operators to ensure I only compare execution times?
 
-- Ponder / read paper on lower bounds method
+- read paper on lower bounds method
 
-
-After weekend:
-
-- Read more papers
-- continue on outline
 
 End of next week
 - Start building presentation
@@ -43,13 +47,19 @@ Debug:
   - Look if stored source tables need to be reset on the cardinality storage
 
 
-today:
-[ ] Try implementing sampling (/ perform statistics generation during read in)
-[ ] Have one range based estimation completely run and analyzed
+Overall todos
 [ ] Fully finish data analysis pipeline / generate automated reporting
 
+On hold
+[ ] Make runnable on server -> Server still seems to not work POSTPONED
+  [ ] Run full job-light
 
-For later
+
+less important todos
+[ ] Move cardstorage into a cpp file
+  [ ] Move cardinality storage retrieval (for join) into estimator
+  [ ] Split up functions in CardinalityStorage
+    [ ] Matching based on operators first
 [ ] Include P-Error (Cardinality Estimation in DBMS: A Comprehensive Benchmark Evaluation)
 [ ] Include STATS / STATS-CEB benchmarks (Cardinality Estimation in DBMS: A Comprehensive Benchmark Evaluation)
 [ ] Include JOB and remove all LIKE queries
@@ -71,37 +81,6 @@ Algorithm:
 4. Return LB_join
 5. If no MCVs available, fallback:
    LB_join = p * min(fmax_R, fmax_S)
-
-
-Must solve:
-[ ] Make runnable on server -> Server still seems to not work POSTPONED
-  [ ] Run full job-light
-
-
-Refactoring:
-  [ ] Understand and clean complete cardinalityStorage
-  [ ] Move cardstorage into a cpp file
-  [ ] Move cardinality storage retrieval (for join) into estimator
-  [ ] Split up functions in CardinalityStorage
-    [ ] Matching based on operators first
-
-
-
-
-###############
-CODE ASSUMPTIONS
-###############
-
-- Selectivity
-  - Lots of stuff
-- Histograms
-  - Even more stuff
-
-###############
-CODE Short cuts
-###############
-
-- removed some of the job-light lines that were faulty (mostly because of insertion of ',' in the notes section)
 
 
 #########

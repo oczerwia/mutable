@@ -127,27 +127,21 @@ namespace m
                                 M_insist((outer->subproblem & inner->subproblem).empty());
                                 M_insist(M.is_connected(outer->subproblem, inner->subproblem));
                                 const Subproblem joined = outer->subproblem | inner->subproblem;
-                                bool found = false;               // Move this to estimator
-                                double stored_cardinality = -1.0; // Move this to estimator
-
-                                if (CardinalityStorage::Get().has_stored_cardinality(joined))
-                                {
-                                    found = true;
-                                    stored_cardinality = CardinalityStorage::Get().get_cardinality();
-                                }
 
                                 if (not PT[joined].model)
                                     PT[joined].model = CE.estimate_join(G, *PT[outer->subproblem].model,
                                                                         *PT[inner->subproblem].model, cnf::CNF{});
 
-                                double C_joined;
-                                if (found)
+                                std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().has_stored_cardinality(joined);
+                                if (card_data)
                                 {
-                                    C_joined = stored_cardinality;
-                                    PT[joined].model->set_cardinality(C_joined);
+                                    if (CardinalityStorage::Get().debug_output())
+                                        std::cout << "Found adjustment rate: " << card_data->adjustment_factor << std::endl;
+
+                                    PT[joined].model->size *= card_data->adjustment_factor;
                                 }
 
-                                C_joined = CE.predict_cardinality(*PT[joined].model);
+                                double C_joined = CE.predict_cardinality(*PT[joined].model);
                                 if (C_joined < least_cardinality)
                                 {
                                     least_cardinality = C_joined;

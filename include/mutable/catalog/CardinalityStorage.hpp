@@ -1,6 +1,3 @@
-// TODO
-// - Also store the estimated cardinality, so that we can just extract it later
-// - Use single method instead of has_stored_cardinality and has_stored_cardinality_range
 #pragma once
 
 #include <mutable/IR/PlanTable.hpp>
@@ -8,7 +5,6 @@
 #include <mutable/IR/CNF.hpp>
 #include <mutable/util/ADT.hpp>
 #include <mutable/Options.hpp>
-
 
 #include <unordered_map>
 #include <memory>
@@ -80,7 +76,6 @@ namespace m
         std::pair<double, double> estimated_range = {-1.0, -1.0};
         double adjustment_factor = 1.0; // LEO optimizer adjustment factor
 
-
         std::size_t operator_order = 0;
         OperatorType operator_type = OperatorType::OTHER;
         std::string operator_name;
@@ -96,8 +91,6 @@ namespace m
         // Performance metrics
         double selectivity = -1.0;
         double error_percent = -1.0;
-
-
 
     public:
         double get_cardinality() const { return true_cardinality; }
@@ -122,14 +115,12 @@ namespace m
         }
     };
 
-
     /**
      * @brief Singleton class that stores cardinality information during query execution
      */
     class CardinalityStorage
     {
     private:
-
         inline static size_t query_counter_ = 0;
 
         std::vector<std::shared_ptr<CardinalityData>> stored_cardinalities_;
@@ -175,7 +166,8 @@ namespace m
             return current_table_names;
         }
 
-        void fill_timing_values(std::unordered_map<std::string, double> times){
+        void fill_timing_values(std::unordered_map<std::string, double> times)
+        {
             current_query_timings = times;
         }
 
@@ -243,9 +235,11 @@ namespace m
             }
         }
 
-        std::set<std::string> extract_filter_clauses(const cnf::CNF& filter) {
+        std::set<std::string> extract_filter_clauses(const cnf::CNF &filter)
+        {
             std::set<std::string> clauses;
-            for (const auto& clause : filter) {
+            for (const auto &clause : filter)
+            {
                 std::ostringstream oss;
                 clause.to_sql(oss);
                 clauses.insert(oss.str());
@@ -262,20 +256,34 @@ namespace m
          * @param data CardinalityData
          * @param alpha Smoothing factor (we use a default initialization of 0.2)
          */
-        static void update_adjustment_factor(CardinalityData& data, double alpha = 0.2) {
-            if (data.estimated_cardinality > 0.0 && data.true_cardinality > 0.0) {
-                double prev_adjustment_factor = data.adjustment_factor;
-                data.adjustment_factor = data.true_cardinality * prev_adjustment_factor / data.estimated_cardinality;
+        static void update_adjustment_factor(CardinalityData &data, double alpha = 0.2, double old_adjustment_factor = 1.0)
+        {
+            if (data.estimated_cardinality > 0.0 && data.true_cardinality > 0.0)
+            {
+                double new_error = data.true_cardinality / data.estimated_cardinality;
+                data.adjustment_factor = old_adjustment_factor * new_error;
+            }
+            else if (data.estimated_cardinality == 0.0 && data.true_cardinality > 0.0)
+            {
+                data.adjustment_factor = old_adjustment_factor + 0.1;
+            }
+            else if (data.true_cardinality == 0.0)
+            {
+                // Overestimate: set to zero adjustment
+                data.adjustment_factor = 0.0;
             }
         }
 
-        bool has_stored_cardinality(SmallBitset involved_tables)
+        std::shared_ptr<const CardinalityData> has_stored_cardinality(SmallBitset involved_tables)
         {
             // 1. Iterate over the Bitset
             // 2. get the involved tables from previously determined set of involved tables
             // 3. iterate over the vector of all previously stored queries and search for equal
             //      sets of tables
-            if (!allow_learning) { return false; }
+            if (!allow_learning)
+            {
+                return nullptr;
+            }
 
             std::set<std::string> table_names;
             for (auto pos : involved_tables)
@@ -285,7 +293,6 @@ namespace m
                     table_names.insert(current_table_names[pos]);
                 }
             }
-            // could be turned into single if instead of multiple
             for (const auto &stored_cardinality : stored_cardinalities_)
             {
                 if (stored_cardinality->table_names == table_names)
@@ -299,15 +306,12 @@ namespace m
 
                         if (group_by_matches)
                         {
-                            cardinality_ = stored_cardinality->get_cardinality();
-                            estimated_range = stored_cardinality->get_range();
-
-                            return true;
+                            return stored_cardinality;
                         }
                     }
                 }
             }
-            return false;
+            return nullptr;
         }
 
         /**
@@ -347,17 +351,19 @@ namespace m
             current_filters_ = filter_strings;
         }
 
-        struct OperatorCounter {
-            static size_t& value() {
+        struct OperatorCounter
+        {
+            static size_t &value()
+            {
                 static size_t counter = 0;
                 return counter;
             }
         };
 
-        void reset_traverse_counter_() {
+        void reset_traverse_counter_()
+        {
             OperatorCounter::value() = 0;
         }
-
 
         /** TODO: Check if this is even needed
          * We could use the switch statement to extract the attributes from the operator classes
@@ -517,12 +523,12 @@ namespace m
                 }
             }
 
-            update_adjustment_factor(*data, 0.2);
+            // update_adjustment_factor(*data, 0.2);
             current_cardinality_data.push_back(data);
             return data;
         }
         /**
-         * @brief Traverse the physical operator tree and collect cardinality information for each operator. 
+         * @brief Traverse the physical operator tree and collect cardinality information for each operator.
          * This function is mostly for the debug_print.
          *
          * This function performs a depth-first traversal of the given operator tree (physical plan root),
@@ -580,9 +586,11 @@ namespace m
                         }
                         std::cout << std::endl;
                     }
-                    if (data->has_filter) {
+                    if (data->has_filter)
+                    {
                         std::cout << "    Filter conditions: ";
-                        for (const auto &filter : data->filter_strings) {
+                        for (const auto &filter : data->filter_strings)
+                        {
                             std::cout << filter << " ";
                         }
                         std::cout << std::endl;
@@ -598,7 +606,8 @@ namespace m
             current_cardinality_data.clear();
         }
 
-        void clear_stored_operators() {
+        void clear_stored_operators()
+        {
             current_cardinality_data.clear();
             reset_traverse_counter_();
         }
@@ -619,13 +628,11 @@ namespace m
             std::vector<CardinalityData> temp_cardinalities;
 
             for (const auto &cardinality_data : current_cardinality_data)
-            {                           
+            {
                 CardinalityData new_cardinality;
 
-
                 new_cardinality.table_names.insert(cardinality_data->table_names.begin(),
-                                                    cardinality_data->table_names.end());
-
+                                                   cardinality_data->table_names.end());
 
                 for (const auto &filter_str : cardinality_data->filter_strings)
                 {
@@ -662,11 +669,16 @@ namespace m
                     {
                         existing_cardinality->true_cardinality = new_cardinality.true_cardinality;
                         existing_cardinality->estimated_range = new_cardinality.estimated_range;
+                        std::cout << "existing_card_est -> new card est" << existing_cardinality->estimated_cardinality << " -> " << new_cardinality.estimated_cardinality << std::endl;
                         existing_cardinality->estimated_cardinality = new_cardinality.estimated_cardinality;
                         existing_cardinality->group_by_columns = new_cardinality.group_by_columns;
-                        update_adjustment_factor(new_cardinality, 0.2);
-                        auto old_adjustment_factor = existing_cardinality->adjustment_factor;
+
+                        double old_adjustment_factor = existing_cardinality->adjustment_factor;
+                        update_adjustment_factor(new_cardinality, 0.2, existing_cardinality->adjustment_factor);
                         existing_cardinality->adjustment_factor = new_cardinality.adjustment_factor;
+
+                        std::cout << "OLD ADJUSTMENT -> NEW ADJUSTMENT" << old_adjustment_factor << " -> " << new_cardinality.adjustment_factor << std::endl;
+
                         found_existing = true;
 
                         if (debug_output_)
@@ -699,7 +711,7 @@ namespace m
                                 std::cout << ", range=[" << existing_cardinality->estimated_range.first
                                           << "-" << existing_cardinality->estimated_range.second << "]";
                             }
-                            std:: cout << ", adjustment=" << old_adjustment_factor << "->" << existing_cardinality->adjustment_factor;
+                            std::cout << ", adjustment=" << old_adjustment_factor << "->" << existing_cardinality->adjustment_factor;
                             std::cout << std::endl;
                         }
                         break;
@@ -759,23 +771,22 @@ namespace m
          * @param output_model the output model to update with cardinality
          * @return true if a stored cardinality was found and applied
          */
-        bool apply_stored_grouping_cardinality(
+        std::shared_ptr<const CardinalityData> apply_stored_grouping_cardinality(
             const QueryGraph &G,
             const DataModel &data_model,
             const std::vector<CardinalityEstimator::group_type> &groups,
             DataModel &output_model)
         {
-            if (!allow_learning) { return false; }
-            // Extract GROUP BY columns using our helper method
+            if (!allow_learning)
+            {
+                return nullptr;
+            }
             std::set<std::string> group_by_cols = extract_group_by_columns(groups);
 
-            // Set current GROUP BY columns
             set_current_group_by_columns(group_by_cols);
 
-            // Get table names directly from the data model
             const std::set<std::string> &table_names = data_model.original_tables;
 
-            // Check stored cardinality directly using table names
             for (const auto &stored_cardinality : stored_cardinalities_)
             {
                 if (stored_cardinality->table_names == table_names &&
@@ -788,17 +799,11 @@ namespace m
 
                     if (group_by_matches)
                     {
-                        output_model.set_cardinality(stored_cardinality->get_cardinality());
-                        if (stored_cardinality->has_range())
-                        {
-                            output_model.set_range(stored_cardinality->get_range());
-                        }
-                        return true;
+                        return stored_cardinality;
                     }
                 }
             }
-
-            return false;
+            return nullptr;
         }
 
         /**
@@ -809,43 +814,39 @@ namespace m
          * @param output_model the output model to update with cardinality
          * @return true if a stored cardinality was found and applied
          */
-        bool apply_stored_aggregation_cardinality(
+        std::shared_ptr<const CardinalityData> apply_stored_aggregation_cardinality(
             const QueryGraph &G,
             const DataModel &data_model,
             DataModel &output_model)
         {
-            if (!allow_learning) { return false; }
-            // Get table names directly from the data model
+            if (!allow_learning)
+            {
+                return nullptr;
+            }
             const std::set<std::string> &table_names = data_model.original_tables;
-            
-            // Check stored cardinality directly using table names
+
             for (const auto &stored_cardinality : stored_cardinalities_)
             {
                 if (stored_cardinality->table_names == table_names &&
                     stored_cardinality->filter_strings == current_filters_ &&
                     stored_cardinality->operator_type == OperatorType::AGGREGATION)
                 {
-                    // Found a matching entry - update output model
-                    output_model.set_cardinality(stored_cardinality->true_cardinality);
-                    if (stored_cardinality->has_range()) {
-                        output_model.set_range(stored_cardinality->get_range());
-                    }
-                    
-                    if (debug_output_) {
-                        std::cout << "  Applied stored aggregation cardinality: " 
-                                << stored_cardinality->true_cardinality
-                                << " for tables: ";
-                        for (const auto &name : table_names) {
+                    // Found a matching entry
+                    if (debug_output_)
+                    {
+                        std::cout << "  Found match: "
+                                  << stored_cardinality->adjustment_factor
+                                  << " for tables: ";
+                        for (const auto &name : table_names)
+                        {
                             std::cout << name << " ";
                         }
                         std::cout << std::endl;
                     }
-                    
-                    return true;
+                    return stored_cardinality;
                 }
             }
-            
-            return false;
+            return nullptr;
         }
 
         /**
@@ -857,134 +858,136 @@ namespace m
          * @param output_model the output model to update with cardinality
          * @return true if a stored cardinality was found and applied
          */
-        bool apply_stored_filter_cardinality(
+        std::shared_ptr<const CardinalityData> apply_stored_filter_cardinality(
             const QueryGraph &G,
             const DataModel &data_model,
             const cnf::CNF &filter,
             DataModel &output_model)
         {
-            if (!allow_learning) { return false; }
-            // Early return if filter is empty
-            if (filter.empty()) {
-                return false;
+            if (!allow_learning)
+            {
+                return nullptr;
             }
-            
+            if (filter.empty())
+            {
+                return nullptr;
+            }
+
             std::set<std::string> filter_strings = extract_filter_clauses(filter);
-            
-            // Get table names directly from the data model
+
             const std::set<std::string> &table_names = data_model.original_tables;
-            
-            // Check stored cardinality directly using table names and filter
+
             for (const auto &stored_cardinality : stored_cardinalities_)
             {
-                // Match based on table names, operator type, and filter string
                 if (stored_cardinality->table_names == table_names &&
                     stored_cardinality->operator_type == OperatorType::FILTER &&
                     stored_cardinality->filter_strings == filter_strings)
                 {
-                    // Found a matching entry - update output model
-                    output_model.set_cardinality(stored_cardinality->true_cardinality);
-                    if (stored_cardinality->has_range()) {
-                        output_model.set_range(stored_cardinality->get_range());
-                    }
-                    
-                    if (debug_output_) {
-                        std::cout << "Stored filters available:" << std::endl;
-                        for (const auto& stored : stored_cardinalities_) {
-                            if (stored->operator_type == OperatorType::FILTER && 
-                                stored->table_names == table_names) {
-                                for (const auto& f : stored->filter_strings) {
-                                    std::cout << "  '" << f << "'" << std::endl;
-                                }
-                            }
+                    // Found a matching entry
+                    if (debug_output_)
+                    {
+                        std::cout << "Stored filters available:" << stored_cardinality->adjustment_factor << std::endl;
+                        for (const auto &f : stored_cardinality->filter_strings)
+                        {
+                            std::cout << "  '" << f << "'" << std::endl;
                         }
                     }
-                    
-                    return true;
+                    return stored_cardinality;
                 }
             }
-            
-            return false;
+            return nullptr;
         }
-
-        
 
         /**
          * @brief Export only the current query's cardinality data to CSV
-         * 
+         *
          * @param filename The CSV file to write to (defaults to "cardinality_data.csv")
          * @return true if export was successful, false otherwise
          */
-        inline bool export_to_csv(const std::string& filename = "") 
+        inline bool export_to_csv(const std::string &filename = "")
         {
-            if (current_cardinality_data.empty()) {
+            if (current_cardinality_data.empty())
+            {
                 return true;
             }
 
             std::string output_file;
-            if (!filename.empty()) {
+            if (!filename.empty())
+            {
                 output_file = filename;
-            } else {
+            }
+            else
+            {
                 output_file = std::string("cardinality_data.csv");
             }
-            
+
             std::ofstream csv_file;
             csv_file.open(output_file, std::ios::app);
-            
-            if (!csv_file.is_open()) {
+
+            if (!csv_file.is_open())
+            {
                 std::cerr << "Failed to open CSV file: " << output_file << std::endl;
                 return false;
             }
-            
-            if (csv_file.tellp() == 0) {
+
+            if (csv_file.tellp() == 0)
+            {
                 csv_file << "query_id,operator_id,operator_type,tables,est_card,true_card,q_error,filter_conditions,group_by_columns,lower_bound,upper_bound,adjustment_factor,dsv_time,qg_constuct_time,lqp_time,plan_enum_time,create_backend_time,pqp_time,exec_query_time\n";
             }
-            
-            for (const auto& data : current_cardinality_data) {
+
+            for (const auto &data : current_cardinality_data)
+            {
                 double q_error = -1.0;
-                if (data->estimated_cardinality > 0 && data->true_cardinality > 0) {
-                    q_error = std::max(data->estimated_cardinality / data->true_cardinality, 
-                                    data->true_cardinality / data->estimated_cardinality);
+                if (data->estimated_cardinality > 0 && data->true_cardinality > 0)
+                {
+                    q_error = std::max(data->estimated_cardinality / data->true_cardinality,
+                                       data->true_cardinality / data->estimated_cardinality);
                 }
-                
+
                 std::string tables = "";
-                for (const auto& table : data->table_names) {
-                    if (!tables.empty()) tables += "|";
+                for (const auto &table : data->table_names)
+                {
+                    if (!tables.empty())
+                        tables += "|";
                     tables += table;
                 }
-                
+
                 std::string filters = "";
-                for (const auto& filter : data->filter_strings) {
-                    if (!filters.empty()) filters += "|";
+                for (const auto &filter : data->filter_strings)
+                {
+                    if (!filters.empty())
+                        filters += "|";
                     filters += filter;
                 }
-                
+
                 std::string group_by = "";
-                for (const auto& col : data->group_by_columns) {
-                    if (!group_by.empty()) group_by += "|";
+                for (const auto &col : data->group_by_columns)
+                {
+                    if (!group_by.empty())
+                        group_by += "|";
                     group_by += col;
                 }
-                
+
                 csv_file << query_counter_ << ","
-                        << data->operator_order << ","
-                        << "\"" << data->operator_type << "\","
-                        << "\"" << tables << "\","
-                        << data->estimated_cardinality << ","
-                        << data->true_cardinality << ","
-                        << q_error << ","
-                        << "\"" << filters << "\","
-                        << "\"" << group_by << "\","
-                        << data->estimated_range.first << ","
-                        << data->estimated_range.second << ","
-                        << data->adjustment_factor << ","
-                        << this->current_query_timings["Read DSV file"] << ","
-                        << this->current_query_timings["Construct the query graph"] << ","
-                        << this->current_query_timings["Compute the logical query plan"] << ","
-                        << this->current_query_timings["Plan enumeration"] << ","
-                        << this->current_query_timings["Create backend"] << ","
-                        << this->current_query_timings["Compute the physical query plan"] << ","
-                        << this->current_query_timings["Execute query"]
-                        << std::endl;
+                         << data->operator_order << ","
+                         << "\"" << data->operator_type << "\","
+                         << "\"" << tables << "\","
+                         << data->estimated_cardinality << ","
+                         << data->true_cardinality << ","
+                         << q_error << ","
+                         << "\"" << filters << "\","
+                         << "\"" << group_by << "\","
+                         << data->estimated_range.first << ","
+                         << data->estimated_range.second << ","
+                         << data->adjustment_factor << ","
+                         << this->current_query_timings["Read DSV file"] << ","
+                         << this->current_query_timings["Construct the query graph"] << ","
+                         << this->current_query_timings["Compute the logical query plan"] << ","
+                         << this->current_query_timings["Plan enumeration"] << ","
+                         << this->current_query_timings["Create backend"] << ","
+                         << this->current_query_timings["Compute the physical query plan"] << ","
+                         << this->current_query_timings["Execute query"]
+                         << std::endl;
             }
             csv_file.close();
             return true;

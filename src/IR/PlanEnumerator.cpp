@@ -157,7 +157,7 @@ struct DPsizeOpt final : PlanEnumeratorCRTP<DPsizeOpt>
                                 continue; // subproblems not connected -> skip
 
                             // Check for stored cardinality before updating the plan
-                            const Subproblem joined = *S1 | *S2;                         
+                            const Subproblem joined = *S1 | *S2;
 
                             cnf::CNF condition; // TODO use join condition
 
@@ -165,13 +165,13 @@ struct DPsizeOpt final : PlanEnumeratorCRTP<DPsizeOpt>
                             if (not PT[joined].model)
                                 PT[joined].model = CE.estimate_join(G, *PT[*S1].model, *PT[*S2].model, condition);
 
-                            if (CardinalityStorage::Get().has_stored_cardinality(joined))
+                            std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().has_stored_cardinality(joined);
+                            if (card_data)
                             {
-                                auto stored_cardinality = CardinalityStorage::Get().get_cardinality();
                                 if (CardinalityStorage::Get().debug_output())
-                                    std::cout << "Using stored true cardinality in DPsizeOpt: " << stored_cardinality << std::endl;
+                                    std::cout << "Found adjustment rate: " << card_data->adjustment_factor << std::endl;
 
-                                PT[joined].model->set_cardinality(stored_cardinality);
+                                PT[joined].model->size *= card_data->adjustment_factor;
                             }
 
                             PT.update(G, CE, CF, *S1, *S2, condition);
@@ -201,13 +201,13 @@ struct DPsizeOpt final : PlanEnumeratorCRTP<DPsizeOpt>
                             if (not PT[joined].model)
                                 PT[joined].model = CE.estimate_join(G, *PT[*S1].model, *PT[*S2].model, condition);
 
-                            if (CardinalityStorage::Get().has_stored_cardinality(joined))
+                            std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().has_stored_cardinality(joined);
+                            if (card_data)
                             {
-                                auto stored_cardinality = CardinalityStorage::Get().get_cardinality();
                                 if (CardinalityStorage::Get().debug_output())
-                                    std::cout << "Using stored true cardinality in DPsizeOpt: " << stored_cardinality << std::endl;
+                                    std::cout << "Found adjustment rate for tables: " << card_data->adjustment_factor << std::endl;
 
-                                PT[joined].model->set_cardinality(stored_cardinality);
+                                PT[joined].model->size *= card_data->adjustment_factor;
                             }
 
                             PT.update(G, CE, CF, *S1, *S2, condition);
@@ -822,7 +822,6 @@ void GOO::operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const Co
  * RangedGOO
  *====================================================================================================================*/
 
-
 template <typename PlanTable>
 void RangeGOO::operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const CostFunction &CF) const
 {
@@ -843,7 +842,6 @@ void RangeGOO::operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, con
     /*----- Greedyly enumerate joins, thereby computing a plan. -----*/
     compute_plan(PT, G, M, CF, CE, nodes, nodes + G.num_sources());
 }
-
 
 /*======================================================================================================================
  * TDGOO
@@ -876,7 +874,7 @@ void TDGOO::operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const 
     X(DPsub, "subset-based subproblem enumeration")                                                                   \
     X(DPsubOpt, "optimized DPsub: does not enumerate symmetric subproblems")                                          \
     X(GOO, "Greedy Operator Ordering")                                                                                \
-    X(RangeGOO, "Range-aware Greedy Operator Ordering") \
+    X(RangeGOO, "Range-aware Greedy Operator Ordering")                                                               \
     X(TDGOO, "Top-down variant of Greedy Operator Ordering")                                                          \
     X(IKKBZ, "greedy algorithm by IK/KBZ, ordering joins by rank")                                                    \
     X(LinearizedDP, "DP with search space linearization based on IK/KBZ")                                             \

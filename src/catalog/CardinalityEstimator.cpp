@@ -18,7 +18,6 @@
 #include <nlohmann/json.hpp>
 #include <mutable/catalog/TableStatistics.hpp>
 #include <mutable/parse/AST.hpp>
-// #include <mutable/catalog/RangeComparisonStrategy.hpp>
 
 using namespace m;
 
@@ -99,14 +98,14 @@ CartesianProductEstimator::estimate_filter(const QueryGraph &G, const DataModel 
     auto &data = as<const CartesianProductDataModel>(_data);
     auto model = std::make_unique<CartesianProductDataModel>(data);
 
-    // Check if we have stored cardinality for this filter+table combination
-    if (CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *model))
-    {
-        return model;
-    }
-
     model->set_stats(data.get_stats());
     model->original_tables = data.original_tables;
+
+    std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *model);
+    if (card_data)
+    {
+        model->size *= card_data->adjustment_factor;
+    }
 
     return model;
 }
@@ -136,11 +135,12 @@ CartesianProductEstimator::estimate_grouping(const QueryGraph &G, const DataMode
     auto &data = as<const CartesianProductDataModel>(_data);
     auto model = std::make_unique<CartesianProductDataModel>();
 
-    if (CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *model))
-    {
-        return model;
-    }
     model->size = data.size;
+    std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *model);
+    if (card_data)
+    {
+        model->size *= card_data->adjustment_factor;
+    }
 
     model->set_stats(data.get_stats());
     model->original_tables = data.original_tables;
@@ -247,17 +247,18 @@ HistogramEstimator::estimate_filter(const QueryGraph &G, const DataModel &_data,
         return result;
     }
 
-    if (CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *result))
-    {
-        return result;
-    }
-
     // Apply histogram-based filtering
     auto current_stats = result->get_stats();
     auto filtered_stats = current_stats.filter_by_cnf(filter);
     result->set_stats(filtered_stats);
 
     result->size = estimate_cardinality_from_histograms(filtered_stats, current_stats.row_count);
+
+    std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *result);
+    if (card_data)
+    {
+        result->size *= card_data->adjustment_factor;
+    }
 
     return result;
 }
@@ -291,10 +292,6 @@ HistogramEstimator::estimate_grouping(const QueryGraph &G, const DataModel &_dat
         result->size = 1;
         return result;
     }
-    if (CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *result))
-    {
-        return result;
-    }
 
     std::vector<std::string> group_columns;
     for (const auto &[grp, alias] : groups)
@@ -312,6 +309,12 @@ HistogramEstimator::estimate_grouping(const QueryGraph &G, const DataModel &_dat
     auto grouped_stats = current_stats.apply_group_by(group_columns);
 
     grouped_stats = grouped_stats.rescale_histograms_to_cardinality(result->size);
+
+    std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *result);
+    if (card_data)
+    {
+        result->size *= card_data->adjustment_factor;
+    }
 
     result->set_stats(grouped_stats);
 
@@ -753,7 +756,6 @@ std::unique_ptr<DataModel> ExperimentalRangeEstimator::estimate_scan(const Query
     model->set_stats(*stats_ptr);
     model->original_tables.insert(stats_ptr->table_name);
 
-
     return model;
 }
 
@@ -789,7 +791,6 @@ ExperimentalRangeEstimator::estimate_limit(const QueryGraph &G, const DataModel 
         result->set_range({limit, range_.second});
     }
     result->set_cardinality(model.size);
-
 
     auto stats = result->get_stats();
     stats.row_count = result->size;
@@ -1750,10 +1751,6 @@ SelectivityEstimator::estimate_filter(const QueryGraph &G, const DataModel &data
     if (filter.empty())
         return m;
 
-    if (CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *m))
-    {
-        return m;
-    }
     double sel = 1.0;
     auto stats = m->get_stats();
     auto filter_columns = filter.get_filter_columns();
@@ -1768,6 +1765,13 @@ SelectivityEstimator::estimate_filter(const QueryGraph &G, const DataModel &data
         }
     }
     m->size = static_cast<std::size_t>(dm.size * sel);
+
+    std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, *m);
+    if (card_data)
+    {
+        m->size = static_cast<std::size_t>(m->size * card_data->adjustment_factor);
+    }
+
     return m;
 }
 
@@ -1876,10 +1880,7 @@ SelectivityEstimator::estimate_grouping(const QueryGraph &G, const DataModel &da
         m->size = 1;
         return m;
     }
-    if (CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *m))
-    {
-        return m;
-    }
+
     auto stats = m->get_stats();
     double prod = 1.0;
 
@@ -1894,18 +1895,21 @@ SelectivityEstimator::estimate_grouping(const QueryGraph &G, const DataModel &da
         }
         else
         {
-            // Fallback: assume column has moderate distinctness
             prod *= dm.size;
         }
     }
 
     m->size = static_cast<std::size_t>(prod);
 
-    // Update statistics for the grouped result
     auto new_stats = m->get_stats();
     new_stats.row_count = m->size;
 
-    // Recompute selectivities based on new row count
+    std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, *m);
+    if (card_data)
+    {
+        new_stats.row_count *= card_data->adjustment_factor;
+    }
+
     for (auto &kv : new_stats.distinct_counts)
     {
         new_stats.selectivity[kv.first] = double(kv.second) / double(new_stats.row_count);

@@ -1,7 +1,6 @@
 TODO / Next steps
 
 
-To do for wochenende:
 
 - Implement 'real' LEO optimizer
   - Partition storage by operator
@@ -12,14 +11,10 @@ To do for wochenende:
 
 Leo step by step plan
 
-- compute the error adjustment rate and store it (no need for vector since we use the previous value only)
 - do non-exact matching (ACHTUNG: Nicht die bestehende Struktur löschen, sonst funktioniert der csv export nichtmehr)
-- do not do the operator partitioning
-- need to add two seperate adjustment factors for the bounds
 
 
 Today:
-- add two error adjustment values for the ranges (with some alpha value)
 - compute min and max for table statistics
 - Dirty implement sampling
 - Make sampling size hyperparameter to see if bounds actually decrease or not

@@ -137,8 +137,13 @@ namespace m
                                 {
                                     if (CardinalityStorage::Get().debug_output())
                                         std::cout << "Found adjustment rate: " << card_data->adjustment_factor << std::endl;
+                                        std::cout << "Lower bound adjustment factor: " << card_data->lower_bound_adjustment_factor << std::endl;
+                                        std::cout << "Upper bound adjustment factor: " << card_data->upper_bound_adjustment_factor << std::endl;
 
                                     PT[joined].model->size *= card_data->adjustment_factor;
+                                    PT[joined].model->range.first = static_cast<std::size_t>(PT[joined].model->range.first * card_data->lower_bound_adjustment_factor);
+                                    PT[joined].model->range.second = static_cast<std::size_t>(PT[joined].model->range.second * card_data->upper_bound_adjustment_factor);
+
                                 }
 
                                 double C_joined = CE.predict_cardinality(*PT[joined].model);
@@ -283,17 +288,22 @@ namespace m
                                     PT[joined].model = CE.estimate_join(G, *PT[outer->subproblem].model,
                                                                         *PT[inner->subproblem].model, cnf::CNF{});
 
-                                if (CardinalityStorage::Get().has_stored_cardinality(joined))
+                                std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().has_stored_cardinality(joined);
+                                if (card_data)
                                 {
-                                    auto stored_card = CardinalityStorage::Get().get_cardinality();
-                                    auto stored_card_range = CardinalityStorage::Get().get_stored_cardinality_range();
-                                    PT[joined].model->set_cardinality(stored_card);
-                                    PT[joined].model->set_range(stored_card_range);
+                                    if (CardinalityStorage::Get().debug_output())
+                                        std::cout << "Found adjustment rate: " << card_data->adjustment_factor << std::endl;
+                                        std::cout << "Lower bound adjustment factor: " << card_data->lower_bound_adjustment_factor << std::endl;
+                                        std::cout << "Upper bound adjustment factor: " << card_data->upper_bound_adjustment_factor << std::endl;
+
+                                    PT[joined].model->size *= card_data->adjustment_factor;
+                                    PT[joined].model->range.first = static_cast<std::size_t>(PT[joined].model->range.first * card_data->lower_bound_adjustment_factor);
+                                    PT[joined].model->range.second = static_cast<std::size_t>(PT[joined].model->range.second * card_data->upper_bound_adjustment_factor);
+                                    current_range = PT[joined].model->range;
                                 }
                                 else
                                 {
-                                    double card = CE.predict_cardinality(*PT[joined].model);
-                                    current_range = {card, card};
+                                    current_range =  PT[joined].model->range;
                                 }
 
                                 if (comparer_->compare(current_range, best_range))

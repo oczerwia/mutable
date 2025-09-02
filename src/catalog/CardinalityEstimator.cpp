@@ -156,17 +156,15 @@ CartesianProductEstimator::estimate_join(const QueryGraph &, const DataModel &_l
     auto right = as<const CartesianProductDataModel>(_right);
     auto model = std::make_unique<CartesianProductDataModel>();
 
-    // Set size as before
     model->size = left.size * right.size;
 
-    // Propagate and merge statistics if available
     auto left_stats = left.get_stats();
     auto right_stats = right.get_stats();
     auto merged_stats = left_stats.merge_for_join(right_stats);
     merged_stats.row_count = model->size;
     model->set_stats(merged_stats);
 
-    // Propagate original tables
+
     std::set<std::string> all_tables = left.original_tables;
     all_tables.insert(right.original_tables.begin(), right.original_tables.end());
     model->original_tables = all_tables;
@@ -247,7 +245,6 @@ HistogramEstimator::estimate_filter(const QueryGraph &G, const DataModel &_data,
         return result;
     }
 
-    // Apply histogram-based filtering
     auto current_stats = result->get_stats();
     auto filtered_stats = current_stats.filter_by_cnf(filter);
     result->set_stats(filtered_stats);
@@ -341,19 +338,15 @@ HistogramEstimator::estimate_join(const QueryGraph &G, const DataModel &_left, c
             auto join_columns = join_condition.get_join_columns();
             for (const auto &[table, columns] : join_columns)
             {
-                if (!columns.empty())
+                for (const auto &[other_table, other_columns] : join_columns)
                 {
-                    for (const auto &[other_table, other_columns] : join_columns)
+                    if (table != other_table && !other_columns.empty())
                     {
-                        if (table != other_table && !other_columns.empty())
-                        {
-                            std::string left_col = table + "." + *columns.begin();
-                            std::string right_col = other_table + "." + *other_columns.begin();
-                            join_pairs.emplace_back(left_col, right_col);
-                            break;
-                        }
+                        std::string left_col = table + "." + *columns.begin();
+                        std::string right_col = other_table + "." + *other_columns.begin();
+                        join_pairs.emplace_back(left_col, right_col);
+                        break;
                     }
-                    break;
                 }
             }
         }
@@ -762,14 +755,26 @@ std::unique_ptr<DataModel> ExperimentalRangeEstimator::estimate_scan(const Query
 std::unique_ptr<DataModel>
 ExperimentalRangeEstimator::estimate_filter(const QueryGraph &G, const DataModel &data, const cnf::CNF &filter) const
 {
+    // TODO: get a suitable filter estimator, or use the selectivity based
     auto &model = as<const ExperimentalRangeDataModel>(data);
     auto result = std::make_unique<ExperimentalRangeDataModel>();
-    result->set_cardinality(model.size);
+
+    result->size = model.size;
+    result->range.first = 1;
+    result->range.second = model.size;
+
+    std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, model);
+    if (card_data)
+    {
+        result->size = result->size * card_data->adjustment_factor;
+        result->range.first =result->range.first * card_data->lower_bound_adjustment_factor;
+        result->range.second = result->range.second * card_data->upper_bound_adjustment_factor;
+    }
 
     result->set_stats(model.get_stats());
     result->original_tables = model.original_tables;
-    result->set_cardinality(model.size);
-    result->set_range(model.range);
+    // result->set_cardinality(model.size);
+    // result->set_range(model.range);
 
     return result;
 }
@@ -808,8 +813,16 @@ ExperimentalRangeEstimator::estimate_grouping(const QueryGraph &G, const DataMod
     auto &model = as<const ExperimentalRangeDataModel>(data);
     auto result = std::make_unique<ExperimentalRangeDataModel>();
 
-    result->set_cardinality(model.size);
-    result->set_range(model.range);
+    std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().apply_stored_grouping_cardinality(G, data, groups, model);
+    if (card_data)
+    {
+        result->size = model.size * card_data->adjustment_factor;
+        result->range.first = model.range.first * card_data->lower_bound_adjustment_factor;
+        result->range.second = model.range.second * card_data->upper_bound_adjustment_factor;
+    }
+
+    // result->set_cardinality(model.size);
+    //result->set_range(model.range);
     if (groups.empty())
     {
         result->set_range({double(1.0), double(1.0)});
@@ -832,7 +845,6 @@ ExperimentalRangeEstimator::estimate_join(const QueryGraph &G, const DataModel &
     auto left_stats = left.get_stats();
     auto right_stats = right.get_stats();
 
-    // Find join columns
     std::set<std::string> left_tables = left_model.original_tables;
     std::set<std::string> right_tables = right_model.original_tables;
     std::vector<std::pair<std::string, std::string>> join_pairs;
@@ -865,7 +877,6 @@ ExperimentalRangeEstimator::estimate_join(const QueryGraph &G, const DataModel &
         }
     }
 
-    // Lower bound computation
     double lower_bound = 0;
     for (const auto &[left_col, right_col] : join_pairs)
     {
@@ -883,14 +894,18 @@ ExperimentalRangeEstimator::estimate_join(const QueryGraph &G, const DataModel &
 
         lower_bound = std::max(lower_bound, std::max(LB_NDV, LB_freq));
     }
+    lower_bound = 1;
 
-    // Upper bound computation
+    // BUG
+    // TODO: This is wrong and assumes that the join is always left, however, both GO and DPSizeOpt are able to create bushy plans
+    // Have to look at the original tables of the models to see what kind of join that is
+    // Going further, do we propagate the NDV and frequency values?
     double prev_upper = left_model.size;
     double right_size = right_model.size;
     double upper_bound = std::min(prev_upper, right_size) * left_model.mf_product * right_model.mf_product;
 
-    // Set cardinality and range
-    result->set_cardinality((lower_bound + upper_bound) / 2); // Midpoint estimate
+    // result->set_cardinality((lower_bound + upper_bound) / 2); 
+    result->set_cardinality(upper_bound);
     result->set_range({lower_bound, upper_bound});
 
     // Merge stats and tables
@@ -1803,7 +1818,6 @@ SelectivityEstimator::estimate_join(const QueryGraph &G,
 
         auto join_columns = join_condition.get_join_columns();
 
-        // Check if this join connects left side to right side
         bool connects_left_to_right = false;
 
         for (const auto &left_table : left_tables)
@@ -1812,7 +1826,6 @@ SelectivityEstimator::estimate_join(const QueryGraph &G,
             {
                 if (join_columns.count(left_table) && join_columns.count(right_table))
                 {
-                    // Found a join that connects left_table to right_table
                     const auto &left_cols = join_columns.at(left_table);
                     const auto &right_cols = join_columns.at(right_table);
 
@@ -1831,11 +1844,10 @@ SelectivityEstimator::estimate_join(const QueryGraph &G,
             break;
     }
 
-    // Apply selectivity estimation
     double sel = 1.0;
     if (join_pairs.empty())
     {
-        m->size = lm.size * rm.size; // Cartesian product
+        m->size = lm.size * rm.size; 
     }
     else
     {

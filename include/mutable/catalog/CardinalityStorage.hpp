@@ -76,6 +76,9 @@ namespace m
         std::pair<double, double> estimated_range = {-1.0, -1.0};
         double adjustment_factor = 1.0; // LEO optimizer adjustment factor
 
+        double lower_bound_adjustment_factor = 1.0;
+        double upper_bound_adjustment_factor = 1.0;
+
         std::size_t operator_order = 0;
         OperatorType operator_type = OperatorType::OTHER;
         std::string operator_name;
@@ -221,7 +224,6 @@ namespace m
                 }
             }
 
-            // Update the current table names vector
             current_table_names = table_names;
 
             if (debug_output_)
@@ -254,9 +256,8 @@ namespace m
          * Code can be found in section 4.3 of the LEO paper
          *
          * @param data CardinalityData
-         * @param alpha Smoothing factor (we use a default initialization of 0.2)
          */
-        static void update_adjustment_factor(CardinalityData &data, double alpha = 0.2, double old_adjustment_factor = 1.0)
+        static void update_adjustment_factor(CardinalityData &data, double old_adjustment_factor = 1.0)
         {
             if (data.estimated_cardinality > 0.0 && data.true_cardinality > 0.0)
             {
@@ -269,10 +270,31 @@ namespace m
             }
             else if (data.true_cardinality == 0.0)
             {
-                // Overestimate: set to zero adjustment
-                data.adjustment_factor = 0.0;
+                data.adjustment_factor = 1.0; // At first lets not correct adjustment when we hit 0
             }
         }
+
+        void update_range_adjustment_factors(CardinalityData &data,
+            double elasticity = 0.5,
+            double old_lower_adjustment_factor = 1.0,
+            double old_upper_adjustment_factor = 1.0)
+        {
+            if (data.estimated_range.first > 0.0 && data.true_cardinality > 0.0) {
+                double adjusted_lower = data.estimated_range.first;
+                double error = data.true_cardinality / adjusted_lower;
+                data.lower_bound_adjustment_factor = old_lower_adjustment_factor * (1.0 + elasticity * (error - 1.0));
+            } else {
+                data.lower_bound_adjustment_factor = old_lower_adjustment_factor;
+            }
+            if (data.estimated_range.second > 0.0 && data.true_cardinality > 0.0) {
+                double adjusted_upper = data.estimated_range.second;
+                double error = data.true_cardinality / adjusted_upper;
+                data.upper_bound_adjustment_factor = old_upper_adjustment_factor * (1.0 + elasticity * (error - 1.0));
+            } else {
+                data.upper_bound_adjustment_factor = old_upper_adjustment_factor;
+            }
+        }
+                
 
         std::shared_ptr<const CardinalityData> has_stored_cardinality(SmallBitset involved_tables)
         {
@@ -304,10 +326,7 @@ namespace m
                             (stored_cardinality->has_grouping &&
                              stored_cardinality->group_by_columns == current_group_by_columns);
 
-                        if (group_by_matches)
-                        {
                             return stored_cardinality;
-                        }
                     }
                 }
             }
@@ -523,7 +542,7 @@ namespace m
                 }
             }
 
-            // update_adjustment_factor(*data, 0.2);
+            update_adjustment_factor(*data);
             current_cardinality_data.push_back(data);
             return data;
         }
@@ -568,7 +587,10 @@ namespace m
 
                     std::cout << ", actual=" << data->true_cardinality;
 
-                    std::cout << ", adjustment=" << data->adjustment_factor << std::endl;
+                    std::cout << ", adjustment factor: " << data->adjustment_factor << std::endl;
+                    std::cout << ", range adjustment factors: ["
+                                << data->lower_bound_adjustment_factor << ", "
+                                << data->upper_bound_adjustment_factor << "]" << std::endl;
 
                     std::cout << "    Tables: ";
                     for (const auto &name : data->table_names)
@@ -669,15 +691,31 @@ namespace m
                     {
                         existing_cardinality->true_cardinality = new_cardinality.true_cardinality;
                         existing_cardinality->estimated_range = new_cardinality.estimated_range;
-                        std::cout << "existing_card_est -> new card est" << existing_cardinality->estimated_cardinality << " -> " << new_cardinality.estimated_cardinality << std::endl;
+                        std::cout << "existing to new est: " << existing_cardinality->estimated_cardinality << " -> " << new_cardinality.estimated_cardinality << std::endl;
                         existing_cardinality->estimated_cardinality = new_cardinality.estimated_cardinality;
                         existing_cardinality->group_by_columns = new_cardinality.group_by_columns;
 
                         double old_adjustment_factor = existing_cardinality->adjustment_factor;
-                        update_adjustment_factor(new_cardinality, 0.2, existing_cardinality->adjustment_factor);
+                        update_adjustment_factor(new_cardinality, existing_cardinality->adjustment_factor);
                         existing_cardinality->adjustment_factor = new_cardinality.adjustment_factor;
 
-                        std::cout << "OLD ADJUSTMENT -> NEW ADJUSTMENT" << old_adjustment_factor << " -> " << new_cardinality.adjustment_factor << std::endl;
+
+                        double old_lower_bound_adjustment = existing_cardinality->lower_bound_adjustment_factor;
+                        double old_upper_bound_adjustment = existing_cardinality->upper_bound_adjustment_factor;
+
+                        update_range_adjustment_factors(
+                            new_cardinality,
+                            0.5,
+                            existing_cardinality->lower_bound_adjustment_factor,
+                            existing_cardinality->upper_bound_adjustment_factor
+                        );
+                        existing_cardinality->lower_bound_adjustment_factor = new_cardinality.lower_bound_adjustment_factor;
+                        existing_cardinality->upper_bound_adjustment_factor = new_cardinality.upper_bound_adjustment_factor;
+
+                        std::cout << "old to new adjustment ("<< new_cardinality.operator_type << ")"<< old_adjustment_factor << " -> " << new_cardinality.adjustment_factor << std::endl;
+                        std::cout << "old to new adjustment lower " << old_lower_bound_adjustment << " -> " << new_cardinality.lower_bound_adjustment_factor << std::endl;
+                        std::cout << "old to new adjustment upper " << old_upper_bound_adjustment << " -> " << new_cardinality.upper_bound_adjustment_factor << std::endl;
+
 
                         found_existing = true;
 
@@ -712,6 +750,8 @@ namespace m
                                           << "-" << existing_cardinality->estimated_range.second << "]";
                             }
                             std::cout << ", adjustment=" << old_adjustment_factor << "->" << existing_cardinality->adjustment_factor;
+                            std::cout << ", range adjustment=[" << old_lower_bound_adjustment << ", " << old_upper_bound_adjustment << "]"
+                                      << " -> [" << new_cardinality.lower_bound_adjustment_factor << ", " << new_cardinality.upper_bound_adjustment_factor << "]";
                             std::cout << std::endl;
                         }
                         break;
@@ -720,7 +760,9 @@ namespace m
 
                 if (!found_existing && new_cardinality.operator_type != OperatorType::OTHER)
                 {
-                    update_adjustment_factor(new_cardinality, 0.2);
+                    update_adjustment_factor(new_cardinality);
+                    update_range_adjustment_factors(new_cardinality, 0.5);
+
                     stored_cardinalities_.push_back(std::make_shared<CardinalityData>(new_cardinality));
 
                     if (debug_output_)
@@ -753,7 +795,9 @@ namespace m
                             std::cout << ", range=[" << new_cardinality.estimated_range.first
                                       << "-" << new_cardinality.estimated_range.second << "]";
                         }
-                        std::cout << ", adjustment=" << new_cardinality.adjustment_factor;
+                        std::cout << ", point adjustment=" << new_cardinality.adjustment_factor;
+                        std::cout << ", range adjustment= [" << new_cardinality.lower_bound_adjustment_factor << ", " <<
+                        new_cardinality.upper_bound_adjustment_factor << "]";
                         std::cout << std::endl;
                     }
                 }
@@ -775,7 +819,7 @@ namespace m
             const QueryGraph &G,
             const DataModel &data_model,
             const std::vector<CardinalityEstimator::group_type> &groups,
-            DataModel &output_model)
+            const DataModel &output_model)
         {
             if (!allow_learning)
             {
@@ -799,6 +843,9 @@ namespace m
 
                     if (group_by_matches)
                     {
+                        std::cout << "Stored groupby available \nPOINT:" << stored_cardinality->adjustment_factor << 
+                        ", RANGE: [" << stored_cardinality->lower_bound_adjustment_factor << ", " <<
+                        stored_cardinality->upper_bound_adjustment_factor << "]" << std::endl;
                         return stored_cardinality;
                     }
                 }
@@ -817,7 +864,7 @@ namespace m
         std::shared_ptr<const CardinalityData> apply_stored_aggregation_cardinality(
             const QueryGraph &G,
             const DataModel &data_model,
-            DataModel &output_model)
+            const DataModel &output_model)
         {
             if (!allow_learning)
             {
@@ -841,6 +888,9 @@ namespace m
                         {
                             std::cout << name << " ";
                         }
+                        std::cout << "POINT: " << stored_cardinality->adjustment_factor << 
+                        ", RANGE: [" << stored_cardinality->lower_bound_adjustment_factor << ", " <<
+                        stored_cardinality->upper_bound_adjustment_factor << "]";
                         std::cout << std::endl;
                     }
                     return stored_cardinality;
@@ -862,7 +912,7 @@ namespace m
             const QueryGraph &G,
             const DataModel &data_model,
             const cnf::CNF &filter,
-            DataModel &output_model)
+            const DataModel &output_model)
         {
             if (!allow_learning)
             {
@@ -886,7 +936,9 @@ namespace m
                     // Found a matching entry
                     if (debug_output_)
                     {
-                        std::cout << "Stored filters available:" << stored_cardinality->adjustment_factor << std::endl;
+                        std::cout << "Stored filters available POINT:" << stored_cardinality->adjustment_factor << 
+                        ", RANGE: [" << stored_cardinality->lower_bound_adjustment_factor << ", " <<
+                        stored_cardinality->upper_bound_adjustment_factor << "]" << std::endl;
                         for (const auto &f : stored_cardinality->filter_strings)
                         {
                             std::cout << "  '" << f << "'" << std::endl;
@@ -932,7 +984,7 @@ namespace m
 
             if (csv_file.tellp() == 0)
             {
-                csv_file << "query_id,operator_id,operator_type,tables,est_card,true_card,q_error,filter_conditions,group_by_columns,lower_bound,upper_bound,adjustment_factor,dsv_time,qg_constuct_time,lqp_time,plan_enum_time,create_backend_time,pqp_time,exec_query_time\n";
+                csv_file << "query_id,operator_id,operator_type,tables,est_card,true_card,q_error,filter_conditions,group_by_columns,lower_bound,upper_bound,adjustment_factor,lower_adjustment_factor,upper_adjustment_factor,dsv_time,qg_constuct_time,lqp_time,plan_enum_time,create_backend_time,pqp_time,exec_query_time\n";
             }
 
             for (const auto &data : current_cardinality_data)
@@ -980,6 +1032,8 @@ namespace m
                          << data->estimated_range.first << ","
                          << data->estimated_range.second << ","
                          << data->adjustment_factor << ","
+                         << data->lower_bound_adjustment_factor << ","
+                         << data->upper_bound_adjustment_factor << ","
                          << this->current_query_timings["Read DSV file"] << ","
                          << this->current_query_timings["Construct the query graph"] << ","
                          << this->current_query_timings["Compute the logical query plan"] << ","

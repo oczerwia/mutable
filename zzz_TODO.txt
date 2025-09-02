@@ -1,21 +1,36 @@
 TODO / Next steps
 
 
-To do for wochenende:
 
 - Implement 'real' LEO optimizer
-  - Partition storage by operator
-  - implement decay function over operator
   - do non-exact matching (i.e. just match on operators and not exact filter matches)
-  - store error factor as well
 
-- compute min and max of table for table statistics
-- Continue with sampling (dirty implement by going over complete table)
-- Make sampling size hyperparameter to see if bounds actually decrease or not
+
+Tomorrow:
+
+- Merge sampling branch
+- switch back to leo branch
+- delete unused local and remote branches
+
+- Clean up 
+  - Make all the models comparable
+  - Search for open gaps that need to be closed for benchmarking
+  - Look at every estimator and describe them in the thesis in bullet points
+- Move hyperparameters out
+  - Sample size
+  - Histogram bins
+- implement lower bound based on intersection
+
+
+Afterwards:
+- Finish outline as far as possible without benchmark (have to send at least next wednesday!)
+- Think about how to hardcode PK-FK relation
+- Build visualizations for bound decrease over time
+- Do the fuzzy matching for non-exact filters
+- Include STATS and JOB
+
 - Questions:
   - Do I need to fix the physical operators to ensure I only compare execution times?
-
-- Ponder / read paper on lower bounds method
 
 
 After weekend:
@@ -36,8 +51,6 @@ Debug:
 
 
 today:
-[ ] Try implementing sampling (/ perform statistics generation during read in)
-[ ] Have one range based estimation completely run and analyzed
 [ ] Fully finish data analysis pipeline / generate automated reporting
 
 

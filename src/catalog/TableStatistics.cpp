@@ -315,6 +315,8 @@ namespace m
         std::vector<std::vector<double>> numeric_values(schema.num_entries());
         std::vector<bool> is_numeric(schema.num_entries(), false);
         std::vector<std::size_t> null_counts(schema.num_entries(), 0);
+        enum NumericKind { NONE, INT, FLOAT, DOUBLE, DECIMAL };
+        std::vector<NumericKind> numeric_kind(schema.num_entries(), NONE);
 
         // Prepare NDV/selectivity computation using Tuple
         for (std::size_t col = 0; col < schema.num_entries(); ++col)
@@ -324,6 +326,20 @@ namespace m
 
             std::unordered_map<Value, int> value_count;
 
+            // most funky way of type conversion
+            const Type* ty = schema[col].type;
+            const Numeric* numeric = cast<const Numeric>(ty);
+            if (numeric) {
+                switch (numeric->kind) {
+                    case Numeric::N_Int:     numeric_kind[col] = INT;     break;
+                    case Numeric::N_Float:   numeric_kind[col] = FLOAT;   break;
+                    case Numeric::N_Decimal: numeric_kind[col] = DECIMAL; break;
+                    default:                 numeric_kind[col] = NONE;    break;
+                }
+            } else {
+                numeric_kind[col] = NONE;
+            }
+
             // TEST SAMPLING
             // std::mt19937 rng(std::random_device{}());
             // auto sampled_values = table.store().sample_column(col, 3, rng);
@@ -332,15 +348,20 @@ namespace m
             auto loader = Interpreter::compile_load(schema, table.store().memory().addr(), table.layout(), schema, 0, 0);
             Tuple tuple(schema);
 
+            is_numeric[col] = schema[col].type->is_numeric();
             for (std::size_t row = 0; row < row_count; ++row)
             {
-                
                 Tuple *args[] = {&tuple};
                 loader(args);
 
-                if (!tuple.is_null(col))
-                {
+                if (!tuple.is_null(col)) {
                     ++value_count[tuple[col]];
+                    switch (numeric_kind[col]) {
+                        case INT:     numeric_values[col].push_back(static_cast<double>(tuple[col].as_i())); break;
+                        case FLOAT:   numeric_values[col].push_back(static_cast<double>(tuple[col].as_f())); break;
+                        case DECIMAL: numeric_values[col].push_back(static_cast<double>(tuple[col].as_i())); break;
+                        default:      break;
+                    }
                 }
             }
 
@@ -362,8 +383,13 @@ namespace m
             double sel = row_count > 0 ? double(nd) / double(row_count) : 1.0;
             selectivity[full_key] = sel;
 
-            if (is_numeric[col] && !numeric_values[col].empty())
+        if (numeric_kind[col] != NONE && !numeric_values[col].empty())
             {
+
+                auto minmax = std::minmax_element(numeric_values[col].begin(), numeric_values[col].end());
+                column_min[full_key] = *minmax.first;
+                column_max[full_key] = *minmax.second;
+
                 histograms[full_key] = ColumnHistogram::create_numeric_histogram(
                     numeric_values[col], nd, null_counts[col]);
             }

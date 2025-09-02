@@ -8,6 +8,7 @@ mkdir -p "$CCACHE_DIR"
 ccache --set-config sloppiness=file_macro,locale,time_macros,include_file_ctime,include_file_mtime
 ccache --set-config compression=false
 ccache --set-config compression_level=6
+ccache --set-config max_size=5G
 echo "Using ccache config:"
 ccache -p | grep -E 'sloppiness|compression'
 

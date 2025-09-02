@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <limits>
 #include <numeric>
+#include <random>
+#include <vector>
 
 namespace m
 {
@@ -311,6 +313,31 @@ namespace m
         const auto &schema = table.schema();
         Tuple tuple(schema);
 
+
+        // GENERATE SAMPLE INDICES (reservoir sampling)
+        std::size_t sample_size = 20;
+        std::size_t row_count = table.store().num_rows(); // TODO: MAKE SAMPLE SIZE A HYPERPARAMETER
+       
+        std::vector<std::size_t> sampled_indices;
+        sampled_indices.reserve(sample_size);
+
+        std::mt19937 rng(std::random_device{}());
+
+        for (std::size_t i = 0; i < row_count; ++i) {
+            if (i < sample_size) {
+                sampled_indices.push_back(i);
+            } else {
+                std::uniform_int_distribution<std::size_t> dist(0, i);
+                std::size_t j = dist(rng);
+                if (j < sample_size) {
+                    sampled_indices[j] = i;
+                }
+            }
+        }
+
+        std::unordered_set<std::size_t> sampled_set(sampled_indices.begin(), sampled_indices.end());
+
+
         std::vector<std::vector<std::string>> string_values(schema.num_entries());
         std::vector<std::vector<double>> numeric_values(schema.num_entries());
         std::vector<bool> is_numeric(schema.num_entries(), false);
@@ -318,7 +345,9 @@ namespace m
         enum NumericKind { NONE, INT, FLOAT, DOUBLE, DECIMAL };
         std::vector<NumericKind> numeric_kind(schema.num_entries(), NONE);
 
-        // Prepare NDV/selectivity computation using Tuple
+        std::unordered_map<std::string, std::unordered_set<double>> numeric_distinct_values;
+
+        // Prepare NDV/selectivity computation using tuple
         for (std::size_t col = 0; col < schema.num_entries(); ++col)
         {
             std::string col_name = std::string(*schema[col].id.name);
@@ -340,28 +369,29 @@ namespace m
                 numeric_kind[col] = NONE;
             }
 
-            // TEST SAMPLING
-            // std::mt19937 rng(std::random_device{}());
-            // auto sampled_values = table.store().sample_column(col, 3, rng);
+
 
             // For each row, extract the value as a single-column Tuple
             auto loader = Interpreter::compile_load(schema, table.store().memory().addr(), table.layout(), schema, 0, 0);
             Tuple tuple(schema);
 
-            is_numeric[col] = schema[col].type->is_numeric();
             for (std::size_t row = 0; row < row_count; ++row)
             {
                 Tuple *args[] = {&tuple};
                 loader(args);
+                if (sampled_set.count(row) == 0) continue; // SAMPLING SKIP IF WE DO NOT WANT TO SAMPLE THE ROW
 
                 if (!tuple.is_null(col)) {
                     ++value_count[tuple[col]];
                     switch (numeric_kind[col]) {
                         case INT:     numeric_values[col].push_back(static_cast<double>(tuple[col].as_i())); break;
                         case FLOAT:   numeric_values[col].push_back(static_cast<double>(tuple[col].as_f())); break;
-                        case DECIMAL: numeric_values[col].push_back(static_cast<double>(tuple[col].as_i())); break;
+                        case DECIMAL: numeric_values[col].push_back(double(tuple[col].as_i()) / pow(10, numeric->scale)); break;
                         default:      break;
                     }
+                } else { // not used
+                    null_counts[col]++;
+                    continue;
                 }
             }
 
@@ -385,10 +415,15 @@ namespace m
 
         if (numeric_kind[col] != NONE && !numeric_values[col].empty())
             {
-
+                // Min and max
                 auto minmax = std::minmax_element(numeric_values[col].begin(), numeric_values[col].end());
                 column_min[full_key] = *minmax.first;
                 column_max[full_key] = *minmax.second;
+
+                // set of values of sample
+                numeric_distinct_values[full_key] = std::unordered_set<double>(
+                    numeric_values[col].begin(), numeric_values[col].end()
+                );
 
                 histograms[full_key] = ColumnHistogram::create_numeric_histogram(
                     numeric_values[col], nd, null_counts[col]);

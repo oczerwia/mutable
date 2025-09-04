@@ -130,6 +130,9 @@ namespace m
 
         std::unordered_map<std::string, std::size_t> distinct_counts;
         std::unordered_map<std::string, int> most_frequent_values;
+
+        std::unordered_map<std::string, double> column_min;
+        std::unordered_map<std::string, double> column_max;
         
         std::unordered_map<std::string, double> selectivity;
         // Histograms ONLY for numeric columns (table_name.column_name format)

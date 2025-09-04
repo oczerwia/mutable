@@ -315,8 +315,8 @@ namespace m
 
 
         // GENERATE SAMPLE INDICES (reservoir sampling)
-        std::size_t sample_size = 20;
-        std::size_t row_count = table.store().num_rows(); // TODO: MAKE SAMPLE SIZE A HYPERPARAMETER
+        std::size_t sample_size = static_cast<std::size_t>(Options::Get().sample_size);
+        std::size_t row_count = table.store().num_rows();
        
         std::vector<std::size_t> sampled_indices;
         sampled_indices.reserve(sample_size);
@@ -426,7 +426,7 @@ namespace m
                 );
 
                 histograms[full_key] = ColumnHistogram::create_numeric_histogram(
-                    numeric_values[col], nd, null_counts[col]);
+                    numeric_values[col], nd, null_counts[col], static_cast<std::size_t>(Options::Get().histogram_bins));
             }
         }
     }

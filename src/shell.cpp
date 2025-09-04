@@ -402,6 +402,16 @@ int main(int argc, const char **argv)
     "disable cardinality learning (no traversal or storage of cardinalities)",
     [&](bool) { Options::Get().learn_cardinalities = false; });
 
+    ADD(int, Options::Get().histogram_bins, 10,
+    nullptr, "--histogram-bins",
+    "number of histogram bins per column histogram (default is 10)",
+    [&](int val) { Options::Get().histogram_bins = val; });
+
+    ADD(int, Options::Get().sample_size, 1000,
+    nullptr, "--sample-size",
+    "number of samples that are used for the creation of the table statistics (default is 1000)",
+    [&](int val) { Options::Get().sample_size = val; });
+
     ADD(const char*, Options::Get().collapse_function, nullptr ,
     nullptr, "--collapse-function",
     "Selects a collapse function for range based approaches (Choose between: UpperBound, LowerBound, Mean)",

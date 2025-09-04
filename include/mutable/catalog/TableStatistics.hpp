@@ -8,6 +8,7 @@
 #include <limits>
 #include <algorithm>
 #include <set>
+#include <mutable/Options.hpp>
 
 namespace m
 {
@@ -31,8 +32,7 @@ namespace m
         std::size_t num_distinct = 0;
         std::size_t null_count = 0;
         std::size_t total_count = 0;
-
-        static const std::size_t DEFAULT_NUM_BINS = 10;
+        std::size_t num_bins = 10;
 
         // Default constructor
         ColumnHistogram() = default;
@@ -41,7 +41,7 @@ namespace m
         static ColumnHistogram create_numeric_histogram(const std::vector<double> &values,
                                                         std::size_t distinct_count,
                                                         std::size_t null_count,
-                                                        std::size_t num_bins = DEFAULT_NUM_BINS);
+                                                        std::size_t num_bins = 10);
 
         // Multiply two histograms for join estimation (assumes independence)
         ColumnHistogram multiply(const ColumnHistogram &other) const;

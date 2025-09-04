@@ -52,6 +52,10 @@ struct M_EXPORT Options
     bool compute_statistics; // whether to compute hist, distinct values etc
     const char *cardinality_csv_path; // Path for cardinality storage statistics output
     bool learn_cardinalities;
+
+    int histogram_bins;
+    int sample_size;
+
     const char *collapse_function;
     // ***************************************
 

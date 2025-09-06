@@ -76,6 +76,8 @@ namespace m
         std::pair<double, double> estimated_range = {-1.0, -1.0};
         double adjustment_factor = 1.0; // LEO optimizer adjustment factor
 
+        std::size_t usage_count = 0; // metric to measure update count / (and therefore usage when learning is activated) of cardinalitydata instance
+
         double lower_bound_adjustment_factor = 1.0;
         double upper_bound_adjustment_factor = 1.0;
 
@@ -719,6 +721,8 @@ namespace m
 
                         found_existing = true;
 
+                        existing_cardinality->usage_count += 1; // touched carddata instance
+
                         if (debug_output_)
                         {
                             std::cout << "  Updated existing CardinalityData: tables={";
@@ -984,7 +988,7 @@ namespace m
 
             if (csv_file.tellp() == 0)
             {
-                csv_file << "query_id,operator_id,operator_type,tables,est_card,true_card,q_error,filter_conditions,group_by_columns,lower_bound,upper_bound,adjustment_factor,lower_adjustment_factor,upper_adjustment_factor,dsv_time,qg_constuct_time,lqp_time,plan_enum_time,create_backend_time,pqp_time,exec_query_time\n";
+                csv_file << "query_id,operator_id,operator_type,tables,est_card,true_card,q_error,filter_conditions,group_by_columns,lower_bound,upper_bound,adjustment_factor,lower_adjustment_factor,upper_adjustment_factor,usage_count,dsv_time,qg_constuct_time,lqp_time,plan_enum_time,create_backend_time,pqp_time,exec_query_time\n";
             }
 
             for (const auto &data : current_cardinality_data)
@@ -1034,6 +1038,7 @@ namespace m
                          << data->adjustment_factor << ","
                          << data->lower_bound_adjustment_factor << ","
                          << data->upper_bound_adjustment_factor << ","
+                         << data->usage_count << ","
                          << this->current_query_timings["Read DSV file"] << ","
                          << this->current_query_timings["Construct the query graph"] << ","
                          << this->current_query_timings["Compute the logical query plan"] << ","

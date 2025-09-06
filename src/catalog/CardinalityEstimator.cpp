@@ -896,15 +896,10 @@ ExperimentalRangeEstimator::estimate_join(const QueryGraph &G, const DataModel &
     }
     lower_bound = 1;
 
-    // BUG
-    // TODO: This is wrong and assumes that the join is always left, however, both GO and DPSizeOpt are able to create bushy plans
-    // Have to look at the original tables of the models to see what kind of join that is
-    // Going further, do we propagate the NDV and frequency values?
-    double prev_upper = left_model.size;
-    double right_size = right_model.size;
-    double upper_bound = std::min(prev_upper, right_size) * left_model.mf_product * right_model.mf_product;
+    double left_upper = left_model.size;
+    double right_upper = right_model.size;
+    double upper_bound = std::min(left_upper, right_upper) * left_model.mf_product * right_model.mf_product;
 
-    // result->set_cardinality((lower_bound + upper_bound) / 2); 
     result->set_cardinality(upper_bound);
     result->set_range({lower_bound, upper_bound});
 

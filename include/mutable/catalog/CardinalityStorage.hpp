@@ -105,12 +105,13 @@ namespace m
 
         bool operator==(const CardinalityData &other) const
         {
-            return operator_type == other.operator_type &&
+            bool check_ = operator_type == other.operator_type &&
                    table_names == other.table_names &&
-                   has_grouping == other.has_grouping &&
-                   has_filter == other.has_filter &&
+                   // has_grouping == other.has_grouping &&
+                   // has_filter == other.has_filter &&
                    filter_strings == other.filter_strings &&
                    group_by_columns == other.group_by_columns;
+            return check_;
             // can turn into hash later?
         }
 
@@ -277,26 +278,31 @@ namespace m
         }
 
         void update_range_adjustment_factors(CardinalityData &data,
-            double elasticity = 0.5,
-            double old_lower_adjustment_factor = 1.0,
-            double old_upper_adjustment_factor = 1.0)
+                                             double elasticity = 0.5,
+                                             double old_lower_adjustment_factor = 1.0,
+                                             double old_upper_adjustment_factor = 1.0)
         {
-            if (data.estimated_range.first > 0.0 && data.true_cardinality > 0.0) {
+            if (data.estimated_range.first > 0.0 && data.true_cardinality > 0.0)
+            {
                 double adjusted_lower = data.estimated_range.first;
                 double error = data.true_cardinality / adjusted_lower;
                 data.lower_bound_adjustment_factor = old_lower_adjustment_factor * (1.0 + elasticity * (error - 1.0));
-            } else {
+            }
+            else
+            {
                 data.lower_bound_adjustment_factor = old_lower_adjustment_factor;
             }
-            if (data.estimated_range.second > 0.0 && data.true_cardinality > 0.0) {
+            if (data.estimated_range.second > 0.0 && data.true_cardinality > 0.0)
+            {
                 double adjusted_upper = data.estimated_range.second;
                 double error = data.true_cardinality / adjusted_upper;
                 data.upper_bound_adjustment_factor = old_upper_adjustment_factor * (1.0 + elasticity * (error - 1.0));
-            } else {
+            }
+            else
+            {
                 data.upper_bound_adjustment_factor = old_upper_adjustment_factor;
             }
         }
-                
 
         std::shared_ptr<const CardinalityData> has_stored_cardinality(SmallBitset involved_tables)
         {
@@ -328,7 +334,7 @@ namespace m
                             (stored_cardinality->has_grouping &&
                              stored_cardinality->group_by_columns == current_group_by_columns);
 
-                            return stored_cardinality;
+                        return stored_cardinality;
                     }
                 }
             }
@@ -591,8 +597,8 @@ namespace m
 
                     std::cout << ", adjustment factor: " << data->adjustment_factor << std::endl;
                     std::cout << ", range adjustment factors: ["
-                                << data->lower_bound_adjustment_factor << ", "
-                                << data->upper_bound_adjustment_factor << "]" << std::endl;
+                              << data->lower_bound_adjustment_factor << ", "
+                              << data->upper_bound_adjustment_factor << "]" << std::endl;
 
                     std::cout << "    Tables: ";
                     for (const auto &name : data->table_names)
@@ -701,7 +707,6 @@ namespace m
                         update_adjustment_factor(new_cardinality, existing_cardinality->adjustment_factor);
                         existing_cardinality->adjustment_factor = new_cardinality.adjustment_factor;
 
-
                         double old_lower_bound_adjustment = existing_cardinality->lower_bound_adjustment_factor;
                         double old_upper_bound_adjustment = existing_cardinality->upper_bound_adjustment_factor;
 
@@ -709,15 +714,13 @@ namespace m
                             new_cardinality,
                             0.5,
                             existing_cardinality->lower_bound_adjustment_factor,
-                            existing_cardinality->upper_bound_adjustment_factor
-                        );
+                            existing_cardinality->upper_bound_adjustment_factor);
                         existing_cardinality->lower_bound_adjustment_factor = new_cardinality.lower_bound_adjustment_factor;
                         existing_cardinality->upper_bound_adjustment_factor = new_cardinality.upper_bound_adjustment_factor;
 
-                        std::cout << "old to new adjustment ("<< new_cardinality.operator_type << ")"<< old_adjustment_factor << " -> " << new_cardinality.adjustment_factor << std::endl;
+                        std::cout << "old to new adjustment (" << new_cardinality.operator_type << ")" << old_adjustment_factor << " -> " << new_cardinality.adjustment_factor << std::endl;
                         std::cout << "old to new adjustment lower " << old_lower_bound_adjustment << " -> " << new_cardinality.lower_bound_adjustment_factor << std::endl;
                         std::cout << "old to new adjustment upper " << old_upper_bound_adjustment << " -> " << new_cardinality.upper_bound_adjustment_factor << std::endl;
-
 
                         found_existing = true;
 
@@ -800,8 +803,7 @@ namespace m
                                       << "-" << new_cardinality.estimated_range.second << "]";
                         }
                         std::cout << ", point adjustment=" << new_cardinality.adjustment_factor;
-                        std::cout << ", range adjustment= [" << new_cardinality.lower_bound_adjustment_factor << ", " <<
-                        new_cardinality.upper_bound_adjustment_factor << "]";
+                        std::cout << ", range adjustment= [" << new_cardinality.lower_bound_adjustment_factor << ", " << new_cardinality.upper_bound_adjustment_factor << "]";
                         std::cout << std::endl;
                     }
                 }
@@ -847,9 +849,7 @@ namespace m
 
                     if (group_by_matches)
                     {
-                        std::cout << "Stored groupby available \nPOINT:" << stored_cardinality->adjustment_factor << 
-                        ", RANGE: [" << stored_cardinality->lower_bound_adjustment_factor << ", " <<
-                        stored_cardinality->upper_bound_adjustment_factor << "]" << std::endl;
+                        std::cout << "Stored groupby available \nPOINT:" << stored_cardinality->adjustment_factor << ", RANGE: [" << stored_cardinality->lower_bound_adjustment_factor << ", " << stored_cardinality->upper_bound_adjustment_factor << "]" << std::endl;
                         return stored_cardinality;
                     }
                 }
@@ -892,9 +892,7 @@ namespace m
                         {
                             std::cout << name << " ";
                         }
-                        std::cout << "POINT: " << stored_cardinality->adjustment_factor << 
-                        ", RANGE: [" << stored_cardinality->lower_bound_adjustment_factor << ", " <<
-                        stored_cardinality->upper_bound_adjustment_factor << "]";
+                        std::cout << "POINT: " << stored_cardinality->adjustment_factor << ", RANGE: [" << stored_cardinality->lower_bound_adjustment_factor << ", " << stored_cardinality->upper_bound_adjustment_factor << "]";
                         std::cout << std::endl;
                     }
                     return stored_cardinality;
@@ -940,9 +938,7 @@ namespace m
                     // Found a matching entry
                     if (debug_output_)
                     {
-                        std::cout << "Stored filters available POINT:" << stored_cardinality->adjustment_factor << 
-                        ", RANGE: [" << stored_cardinality->lower_bound_adjustment_factor << ", " <<
-                        stored_cardinality->upper_bound_adjustment_factor << "]" << std::endl;
+                        std::cout << "Stored filters available POINT:" << stored_cardinality->adjustment_factor << ", RANGE: [" << stored_cardinality->lower_bound_adjustment_factor << ", " << stored_cardinality->upper_bound_adjustment_factor << "]" << std::endl;
                         for (const auto &f : stored_cardinality->filter_strings)
                         {
                             std::cout << "  '" << f << "'" << std::endl;
@@ -998,6 +994,15 @@ namespace m
                 {
                     q_error = std::max(data->estimated_cardinality / data->true_cardinality,
                                        data->true_cardinality / data->estimated_cardinality);
+                }
+
+                for (const auto &stored : stored_cardinalities_)
+                {
+                    if (*data == *stored)
+                    {
+                        data->usage_count = stored->usage_count;
+                        break;
+                    }
                 }
 
                 std::string tables = "";

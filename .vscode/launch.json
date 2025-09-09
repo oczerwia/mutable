@@ -47,6 +47,9 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/debug_shared/bin/shell",
             "args": [
+                //"--no-learn-cardinalities",
+                "--data-layout",
+                "Row", // This is somehow ignored 
                 "--plan-enumerator",
                 "RangeGOO",
                 "--cardinality-estimator",
@@ -57,7 +60,9 @@
                 "z_output_data_/ExperimentalRangeEstimator.csv",
                 "--collapse-function",
                 "UpperBound",
-                "zzz_micro_query.sql"
+                "--sample-size",
+                "100000",
+                "benchmark/job-light/ALL_QUERIES.sql"
             ],
             "cwd": "${workspaceFolder}",
             "terminal": "integrated"

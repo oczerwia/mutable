@@ -416,6 +416,8 @@ namespace m
             std::size_t size = 0;
             std::vector<int> max_frequencies;
             std::size_t mf_product = 1;
+            std::unordered_map<std::string, std::unordered_map<Value, int>> value_frequencies; // all of them
+            std::unordered_map<Value, int> value_frequency; // this is the one we will join on
                         
 
             ExperimentalRangeDataModel() = default;

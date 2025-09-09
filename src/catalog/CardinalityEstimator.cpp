@@ -748,6 +748,7 @@ std::unique_ptr<DataModel> ExperimentalRangeEstimator::estimate_scan(const Query
     auto stats_ptr = BT.table().statistics();
     model->set_stats(*stats_ptr);
     model->original_tables.insert(stats_ptr->table_name);
+    model->value_frequencies = BT.table().statistics()->value_frequencies;
 
     return model;
 }
@@ -880,21 +881,26 @@ ExperimentalRangeEstimator::estimate_join(const QueryGraph &G, const DataModel &
     double lower_bound = 0;
     for (const auto &[left_col, right_col] : join_pairs)
     {
-        double N_R = left_stats.row_count;
-        double N_S = right_stats.row_count;
 
-        double NDV_R = left_stats.distinct_counts.count(left_col) ? left_stats.distinct_counts.at(left_col) : 1;
-        double NDV_S = right_stats.distinct_counts.count(right_col) ? right_stats.distinct_counts.at(right_col) : 1;
+        std::unordered_map<Value, int> left_value_frequency;
+        std::unordered_map<Value, int> right_value_frequency;
+        if (left_model.value_frequency.empty()) {
+            left_value_frequency = left_stats.value_frequencies[left_col];
+        } else {
+            left_value_frequency = left_model.value_frequency;
+        }
+        if (right_model.value_frequency.empty()) {
+            right_value_frequency = right_stats.value_frequencies[right_col];
+        } else {
+            right_value_frequency = right_model.value_frequency;
+        }
 
-        double fmax_R = left_stats.most_frequent_values.count(left_col) ? left_stats.most_frequent_values.at(left_col) : 1;
-        double fmax_S = right_stats.most_frequent_values.count(right_col) ? right_stats.most_frequent_values.at(right_col) : 1;
-
-        double LB_NDV = (N_R * N_S) / std::max(NDV_R, NDV_S);
-        double LB_freq = std::max(fmax_R, fmax_S);
-
-        lower_bound = std::max(lower_bound, std::max(LB_NDV, LB_freq));
+        auto intersection = intersect_value_frequencies(left_value_frequency, right_value_frequency);
+        result->value_frequency = intersection; // We will propagate the sample of the join column from now on, since all filters etc are always pushed down
+        for (const auto &kv : intersection) {
+            lower_bound += kv.second;
+            }
     }
-    lower_bound = 1;
 
     double left_upper = left_model.size;
     double right_upper = right_model.size;
@@ -903,7 +909,6 @@ ExperimentalRangeEstimator::estimate_join(const QueryGraph &G, const DataModel &
     result->set_cardinality(upper_bound);
     result->set_range({lower_bound, upper_bound});
 
-    // Merge stats and tables
     auto merged_stats = left_stats.merge_for_join(right_stats);
     merged_stats.row_count = result->size;
     result->set_stats(merged_stats);

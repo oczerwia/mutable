@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <set>
 #include <mutable/Options.hpp>
+#include <mutable/IR/Tuple.hpp> 
 
 namespace m
 {
@@ -139,6 +140,8 @@ namespace m
         std::unordered_map<std::string, ColumnHistogram> histograms;
         std::size_t row_count = 0;
 
+        std::unordered_map<std::string, std::unordered_map<Value, int>> value_frequencies;
+
         // Compute statistics for a table
         void compute(const Table &table);
 
@@ -195,4 +198,9 @@ namespace m
          */
         TableStatistics apply_group_by(const std::vector<std::string> &group_columns) const;
     };
+    
+    std::unordered_map<Value, int> intersect_value_frequencies(
+            const std::unordered_map<Value, int>& left,
+            const std::unordered_map<Value, int>& right);
+
 }; // namespace m

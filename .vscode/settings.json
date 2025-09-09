@@ -94,6 +94,7 @@
         "hash_set": "cpp",
         "memory_resource": "cpp",
         "type_traits": "cpp",
-        "coroutine": "cpp"
+        "coroutine": "cpp",
+        "fft": "cpp"
     }
 }

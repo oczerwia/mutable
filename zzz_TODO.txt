@@ -1,36 +1,39 @@
 TODO / Next steps
 
 
-
-- Implement 'real' LEO optimizer
-  - do non-exact matching (i.e. just match on operators and not exact filter matches)
-
-
 Tomorrow:
 
-- Merge sampling branch
-- switch back to leo branch
-- delete unused local and remote branches
+- extend so that filters can be taken into account (need to sample all columns, then do set intersection and remove for all columns)
+- Use the at method of the rowstore to get the full row
 
-- Clean up 
-  - Make all the models comparable
-  - Search for open gaps that need to be closed for benchmarking
-  - Look at every estimator and describe them in the thesis in bullet points
-- Move hyperparameters out
-  - Sample size
-  - Histogram bins
-- implement lower bound based on intersection
+tuesday:
+[MUST]: make significant progress in the outline
+[NICE]: Include STATS and JOB
+
+
+sunday:
+- Finish outline as far as possible without benchmark (have to send at least next wednesday!)
+
+- finish most visualizations
+
+Monday:
+
+- implement PK-FK relation information
+- export json plan trees
+- continue outline
+
+Tuesday:
+- Implement oracle: (use leo and estimator that always says cost is 1, then iterate over the query as often as needed until optimal plan is found)
+- continue outline
 
 
 Afterwards:
-- Finish outline as far as possible without benchmark (have to send at least next wednesday!)
-- Think about how to hardcode PK-FK relation
-- Build visualizations for bound decrease over time
-- Do the fuzzy matching for non-exact filters
-- Include STATS and JOB
+- what bound collapse to use
+
 
 - Questions:
-  - Do I need to fix the physical operators to ensure I only compare execution times?
+  - Do I need to fix the physical operators (only do hashjoins) to ensure I only compare execution times?
+  - make leo matching ignore filters and group bys, make group bys ignore filters?
 
 
 After weekend:

@@ -62,12 +62,12 @@ CREATE TABLE movie_info (
 
 
 -- Import data from CSV files
-IMPORT INTO cast_info DSV "benchmark/job-light/data/cast_info.csv" ROWS 10000;
-IMPORT INTO title DSV "benchmark/job-light/data/title.csv" ROWS 10000;
-IMPORT INTO movie_companies DSV "benchmark/job-light/data/movie_companies_cleaned.csv" ROWS 10000;
-IMPORT INTO movie_info_idx DSV "benchmark/job-light/data/movie_info_idx_cleaned.csv" ROWS 10000;
-IMPORT INTO movie_keyword DSV "benchmark/job-light/data/movie_keyword.csv" ROWS 10000;
-IMPORT INTO movie_info DSV "benchmark/job-light/data/movie_info.csv" ROWS 10000;
+IMPORT INTO cast_info DSV "benchmark/job-light/data/cast_info.csv" ROWS 1000000; -- 10 Mil
+IMPORT INTO title DSV "benchmark/job-light/data/title.csv" ROWS 1000000; 
+IMPORT INTO movie_companies DSV "benchmark/job-light/data/movie_companies_cleaned.csv" ROWS 1000000; 
+IMPORT INTO movie_info_idx DSV "benchmark/job-light/data/movie_info_idx_cleaned.csv" ROWS 1000000; 
+IMPORT INTO movie_keyword DSV "benchmark/job-light/data/movie_keyword.csv" ROWS 1000000; 
+IMPORT INTO movie_info DSV "benchmark/job-light/data/movie_info.csv" ROWS 1000000; 
 
 
 

@@ -11,7 +11,7 @@ namespace m {
 struct RowStore : Store
 {
 #ifndef NDEBUG
-    static constexpr std::size_t ALLOCATION_SIZE = 1UL << 37; ///< 1 GiB
+    static constexpr std::size_t ALLOCATION_SIZE = 1UL << 44; ///< 1 GiB
 #else
     static constexpr std::size_t ALLOCATION_SIZE = 1UL << 37; ///< 128 GiB
 #endif
@@ -29,6 +29,8 @@ struct RowStore : Store
     ~RowStore();
 
     virtual std::size_t num_rows() const override { return num_rows_; }
+
+    virtual std::size_t capacity() const override { return capacity_; }
 
     int offset(uint32_t idx) const {
         M_insist(idx <= table().num_attrs(), "index out of range");

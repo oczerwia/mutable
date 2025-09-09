@@ -32,6 +32,10 @@ struct PaxStore : Store
     ~PaxStore();
 
     virtual std::size_t num_rows() const override { return num_rows_; }
+    virtual std::size_t row_size() const override { return 0; }
+
+    virtual std::size_t capacity() const override { return capacity_; }
+
     std::size_t num_rows_per_block() const { return num_rows_per_block_; }
     uint32_t block_size() const { return block_size_; }
 

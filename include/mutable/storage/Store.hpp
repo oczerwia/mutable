@@ -44,6 +44,13 @@ struct M_EXPORT Store
     /** Return the number of rows in this store. */
     virtual std::size_t num_rows() const = 0;
 
+
+    virtual std::size_t row_size() const = 0;
+    
+
+    /** Check capacity of store */
+    virtual std::size_t capacity() const = 0;
+
     /** Append a row to the store. */
     virtual void append() = 0;
 

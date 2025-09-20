@@ -141,7 +141,8 @@ namespace m
         std::size_t row_count = 0;
 
         std::unordered_map<std::string, std::unordered_map<Value, int>> value_frequencies;
-
+        std::unordered_map<std::string, std::vector<std::pair<Value, int>>> sorted_value_frequencies;
+        
         // Compute statistics for a table
         void compute(const Table &table);
 
@@ -152,6 +153,8 @@ namespace m
         std::string get_table_name() const;
 
         void extract_column_names(const Table &table);
+
+        std::vector<std::pair<Value, int>> top_k_values(const std::string& table_col, std::size_t k) const;
 
         // Get selectivity for any column (numeric or non-numeric)
         double get_selectivity(const std::string &table_col) const

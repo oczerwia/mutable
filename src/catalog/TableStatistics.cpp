@@ -14,6 +14,7 @@
 #include <string>
 #include <algorithm>
 #include <vector>
+#include <cmath>
 
 namespace m
 {
@@ -335,34 +336,44 @@ namespace m
         const auto &schema = table.schema();
         Tuple tuple(schema);
 
-        // GENERATE SAMPLE INDICES (reservoir sampling)
-        std::size_t sample_size = static_cast<std::size_t>(Options::Get().sample_size);
         std::size_t row_count = table.store().num_rows();
+        std::size_t sample_size = row_count; // static_cast<std::size_t>(Options::Get().sample_size);
+        
 
-        auto scale = double(row_count) / double(sample_size);
+        double scale = 1.0;
+        // if (sample_size > 0)
+        //     scale = double(row_count) / double(sample_size);
 
+        // std::vector<std::size_t> sampled_indices;
+        // sampled_indices.reserve(sample_size);
+
+        // std::mt19937 rng(std::random_device{}());
+
+        // for (std::size_t i = 0; i < row_count; ++i)
+        // {
+        //     if (i < sample_size)
+        //     {
+        //         sampled_indices.push_back(i);
+        //     }
+        //     else
+        //     {
+        //         std::uniform_int_distribution<std::size_t> dist(0, i);
+        //         std::size_t j = dist(rng);
+        //         if (j < sample_size)
+        //         {
+        //             sampled_indices[j] = i;
+        //         }
+        //     }
+        // }
+
+        // std::unordered_set<std::size_t> sampled_set(sampled_indices.begin(), sampled_indices.end());
+
+        // Create stats on full table now
         std::vector<std::size_t> sampled_indices;
         sampled_indices.reserve(sample_size);
-
-        std::mt19937 rng(std::random_device{}());
-
-        for (std::size_t i = 0; i < row_count; ++i)
-        {
-            if (i < sample_size)
-            {
-                sampled_indices.push_back(i);
-            }
-            else
-            {
-                std::uniform_int_distribution<std::size_t> dist(0, i);
-                std::size_t j = dist(rng);
-                if (j < sample_size)
-                {
-                    sampled_indices[j] = i;
-                }
-            }
+        for (std::size_t i = 0; i < row_count; ++i) {
+            sampled_indices.push_back(i);
         }
-
         std::unordered_set<std::size_t> sampled_set(sampled_indices.begin(), sampled_indices.end());
 
         std::vector<std::vector<std::string>> string_values(schema.num_entries());
@@ -425,9 +436,10 @@ namespace m
             {
                 Tuple *args[] = {&tuple};
                 loader(args);
-                if (sampled_set.count(row) == 0){
-                    continue; // SAMPLING SKIP IF WE DO NOT WANT TO SAMPLE THE ROW
-                }
+                // USED FOR SAMPLING
+                // if (sampled_set.count(row) == 0){
+                //     continue; // SAMPLING SKIP IF WE DO NOT WANT TO SAMPLE THE ROW
+                // }
                 if (!tuple.is_null(col))
                 {
                     ++value_count[tuple[col]];
@@ -452,10 +464,22 @@ namespace m
                     continue;
                 }
             }
-            for (auto& [val, count] : value_count) {
-                count = static_cast<int>(count * scale); // SKALE UP
+            if (scale < 1.0){
+                for (auto& [val, count] : value_count) {
+                    count = static_cast<int>(count * scale); // SKALE UP
+                }
             }
             value_frequencies[full_key] = value_count;
+
+            std::vector<std::pair<Value, int>> sortedVals;
+            sortedVals.reserve(value_count.size());
+            for (const auto &p : value_count) {
+                sortedVals.emplace_back(p.first, p.second);
+            }
+            std::sort(sortedVals.begin(), sortedVals.end(), [](const auto &a, const auto &b) {
+                return a.second > b.second;
+            });
+            sorted_value_frequencies[full_key] = std::move(sortedVals);
 
             std::size_t nd = value_count.size();
             distinct_counts[full_key] = nd;
@@ -498,6 +522,16 @@ namespace m
                 hist.null_count = static_cast<std::size_t>(hist.null_count * scale);
             }
         }
+    }
+
+    std::vector<std::pair<Value, int>> TableStatistics::top_k_values(const std::string &table_col, std::size_t k) const {
+        std::vector<std::pair<Value,int>> result;
+        auto it = sorted_value_frequencies.find(table_col);
+        if (it == sorted_value_frequencies.end() || k == 0)
+            return result;
+        const auto &sortedVec = it->second;
+        result.assign(sortedVec.begin(), sortedVec.begin() + std::min(k, sortedVec.size()));
+        return result;
     }
 
     ColumnHistogram TableStatistics::multiply_histograms(const std::string &left_col, const std::string &right_col) const

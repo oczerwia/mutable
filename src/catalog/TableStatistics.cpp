@@ -484,15 +484,11 @@ namespace m
             std::size_t nd = value_count.size();
             distinct_counts[full_key] = nd;
 
-            int most_frequent_value_count = -1;
-
-            for (const auto &[value, count] : value_count)
-            {
-                if (count > most_frequent_value_count)
-                {
-                    most_frequent_value_count = count;
-                }
+            int most_frequent_value_count = 0;
+            if (!sorted_value_frequencies[full_key].empty()) {
+                int most_frequent_value_count = sorted_value_frequencies[full_key][0].second;
             }
+
             most_frequent_value_count = static_cast<int>(most_frequent_value_count * scale); // SCALE UP
 
             most_frequent_values[full_key] = most_frequent_value_count;

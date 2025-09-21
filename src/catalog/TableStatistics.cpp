@@ -530,6 +530,30 @@ namespace m
         return result;
     }
 
+    std::vector<std::pair<Value, int>> intersect_top_k(
+    const std::vector<std::pair<Value, int>> &topk1,
+    const std::vector<std::pair<Value, int>> &topk2)
+    {
+        std::unordered_map<Value, int> freqMap2;
+        for (const auto &entry : topk2) {
+            freqMap2[entry.first] = entry.second;
+        }
+
+        std::vector<std::pair<Value, int>> result;
+        for (const auto &entry : topk1) {
+            auto it = freqMap2.find(entry.first);
+            if (it != freqMap2.end()) {
+                result.emplace_back(entry.first, entry.second * it->second);
+            }
+        }
+
+        std::sort(result.begin(), result.end(), [](const auto &a, const auto &b) {
+            return a.second > b.second;
+        });
+
+        return result;
+    }
+
     ColumnHistogram TableStatistics::multiply_histograms(const std::string &left_col, const std::string &right_col) const
     {
         auto left_hist = get_histogram(left_col);

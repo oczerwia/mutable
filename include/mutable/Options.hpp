@@ -53,6 +53,8 @@ struct M_EXPORT Options
     const char *cardinality_csv_path; // Path for cardinality storage statistics output
     bool learn_cardinalities;
 
+    int top_k;
+
     int histogram_bins;
     int sample_size;
 

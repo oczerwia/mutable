@@ -412,9 +412,14 @@ int main(int argc, const char **argv)
     "number of samples that are used for the creation of the table statistics (default is 1000)",
     [&](int val) { Options::Get().sample_size = val; });
 
+    ADD(int, Options::Get().top_k, 1024,
+    nullptr, "--topk-size",
+    "Number of highest value frequencies to include into the top-k datastructure", // testing on 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536
+    [&](int val) { Options::Get().top_k = val; });
+
     ADD(const char*, Options::Get().collapse_function, nullptr ,
     nullptr, "--collapse-function",
-    "Selects a collapse function for range based approaches (Choose between: UpperBound, LowerBound, Mean)",
+    "Selects a collapse function for range based approaches (Choose between: Bound, LowerBound, Mean)",
     [&](const char *str) { Options::Get().collapse_function = str; });
 
     /*------ Cost Model Generation -----------------------------------------------------------------------------------*/

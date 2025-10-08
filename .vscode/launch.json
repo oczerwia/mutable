@@ -47,7 +47,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/debug_shared/bin/shell",
             "args": [
-                //"--no-learn-cardinalities",
+                "--no-learn-cardinalities",
                 "--data-layout",
                 "Row", // This is somehow ignored 
                 "--plan-enumerator",
@@ -57,12 +57,36 @@
                 "--backend",
                 "Interpreter",
                 "--cardinality-csv",
-                "z_output_data_/ExperimentalRangeEstimator.csv",
+                "z_output_data_/ExperimentalRangeEstimator_mean.csv",
                 "--collapse-function",
-                "UpperBound",
-                "--sample-size",
-                "100000",
+                "Mean",
                 "benchmark/job-light/ALL_QUERIES.sql"
+            ],
+            "cwd": "${workspaceFolder}",
+            "terminal": "integrated"
+        },
+        {
+            "name": "TestExperimentalRange",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug_shared/bin/shell",
+            "args": [
+                "--no-learn-cardinalities",
+                "--data-layout",
+                "Row", // This is somehow ignored 
+                "--plan-enumerator",
+                "RangeGOO",
+                "--cardinality-estimator",
+                "ExperimentalRange",
+                "--backend",
+                "Interpreter",
+                "--cardinality-csv",
+                "z_output_data_/testtesttest.csv",
+                "--collapse-function",
+                "Mean",
+                "--topk-size",
+                "5000",
+                "zzz_micro_query.sql"
             ],
             "cwd": "${workspaceFolder}",
             "terminal": "integrated"

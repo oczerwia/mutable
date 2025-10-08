@@ -418,6 +418,8 @@ namespace m
             std::size_t mf_product = 1;
             std::unordered_map<std::string, std::unordered_map<Value, int>> value_frequencies; // all of them
             std::unordered_map<Value, int> value_frequency; // this is the one we will join on
+            std::unordered_map<std::string, std::vector<std::pair<double, int>>> sorted_value_frequencies;
+            std::unordered_map<std::string, int> highest_frequencies;
                         
 
             ExperimentalRangeDataModel() = default;

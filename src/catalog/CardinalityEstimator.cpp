@@ -164,7 +164,6 @@ CartesianProductEstimator::estimate_join(const QueryGraph &, const DataModel &_l
     merged_stats.row_count = model->size;
     model->set_stats(merged_stats);
 
-
     std::set<std::string> all_tables = left.original_tables;
     all_tables.insert(right.original_tables.begin(), right.original_tables.end());
     model->original_tables = all_tables;
@@ -749,6 +748,7 @@ std::unique_ptr<DataModel> ExperimentalRangeEstimator::estimate_scan(const Query
     model->set_stats(*stats_ptr);
     model->original_tables.insert(stats_ptr->table_name);
     model->value_frequencies = BT.table().statistics()->value_frequencies;
+    model->sorted_value_frequencies = stats_ptr->sorted_value_frequencies;
 
     return model;
 }
@@ -756,24 +756,39 @@ std::unique_ptr<DataModel> ExperimentalRangeEstimator::estimate_scan(const Query
 std::unique_ptr<DataModel>
 ExperimentalRangeEstimator::estimate_filter(const QueryGraph &G, const DataModel &data, const cnf::CNF &filter) const
 {
-    // TODO: get a suitable filter estimator, or use the selectivity based
     auto &model = as<const ExperimentalRangeDataModel>(data);
     auto result = std::make_unique<ExperimentalRangeDataModel>();
 
     result->size = model.size;
-    result->range.first = 1;
-    result->range.second = model.size;
 
     std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().apply_stored_filter_cardinality(G, data, filter, model);
     if (card_data)
     {
         result->size = result->size * card_data->adjustment_factor;
-        result->range.first =result->range.first * card_data->lower_bound_adjustment_factor;
+        result->range.first = result->range.first * card_data->lower_bound_adjustment_factor;
         result->range.second = result->range.second * card_data->upper_bound_adjustment_factor;
     }
+    auto stats = model.get_stats();
+    auto filtered_stats = stats.filter_by_cnf(filter);
+    filtered_stats = filtered_stats.reduce_top_k_by_cnf(filter);
 
-    result->set_stats(model.get_stats());
+    result->set_stats(filtered_stats);
     result->original_tables = model.original_tables;
+
+    double min_topk_sum = std::numeric_limits<double>::max();
+    for (const auto &entry : result->get_stats().sorted_value_frequencies) {
+        double sum_frequencies = std::accumulate(entry.second.begin(), entry.second.end(), 0.0,
+            [](double acc, const std::pair<double, int> &p) {
+                return acc + p.second;
+            });
+        min_topk_sum = std::min(min_topk_sum, sum_frequencies);
+    }
+    if (min_topk_sum == std::numeric_limits<double>::max())
+        min_topk_sum = result->size;
+
+    result->range.first = min_topk_sum;
+
+    result->range.second = model.size;
     // result->set_cardinality(model.size);
     // result->set_range(model.range);
 
@@ -823,7 +838,7 @@ ExperimentalRangeEstimator::estimate_grouping(const QueryGraph &G, const DataMod
     }
 
     // result->set_cardinality(model.size);
-    //result->set_range(model.range);
+    // result->set_range(model.range);
     if (groups.empty())
     {
         result->set_range({double(1.0), double(1.0)});
@@ -845,6 +860,8 @@ ExperimentalRangeEstimator::estimate_join(const QueryGraph &G, const DataModel &
 
     auto left_stats = left.get_stats();
     auto right_stats = right.get_stats();
+
+    std::unique_ptr<RangeComparer> comparer_ = GetRangeComparer_();
 
     std::set<std::string> left_tables = left_model.original_tables;
     std::set<std::string> right_tables = right_model.original_tables;
@@ -879,34 +896,64 @@ ExperimentalRangeEstimator::estimate_join(const QueryGraph &G, const DataModel &
     }
 
     double lower_bound = 0;
+    std::string left_col_;
+    std::string right_col_;
+
+    std::vector<std::pair<double, int>> left_topk;
+    std::vector<std::pair<double, int>> right_topk;
+    std::vector<std::pair<double, int>> intersection;
+    int left_most_frequent_value_count;
+    int right_most_frequent_value_count;
+
+    const std::size_t TOP_K = Options::Get().top_k;
     for (const auto &[left_col, right_col] : join_pairs)
     {
+        left_col_ = left_col;
+        right_col_ = right_col;
+        auto left_it = left_stats.sorted_value_frequencies.find(left_col);
+        auto right_it = right_stats.sorted_value_frequencies.find(right_col);
 
-        std::unordered_map<Value, int> left_value_frequency;
-        std::unordered_map<Value, int> right_value_frequency;
-        if (left_model.value_frequency.empty()) {
-            left_value_frequency = left_stats.value_frequencies[left_col];
-        } else {
-            left_value_frequency = left_model.value_frequency;
-        }
-        if (right_model.value_frequency.empty()) {
-            right_value_frequency = right_stats.value_frequencies[right_col];
-        } else {
-            right_value_frequency = right_model.value_frequency;
+        if (left_it == left_stats.sorted_value_frequencies.end() ||
+            right_it == right_stats.sorted_value_frequencies.end())
+        {
+            continue;
         }
 
-        auto intersection = intersect_value_frequencies(left_value_frequency, right_value_frequency);
-        result->value_frequency = intersection; // We will propagate the sample of the join column from now on, since all filters etc are always pushed down
-        for (const auto &kv : intersection) {
-            lower_bound += kv.second;
-            }
+        left_topk = left_it->second;
+        right_topk = right_it->second;
+
+        if (left_topk.size() > TOP_K)
+            left_topk.resize(TOP_K);
+        if (right_topk.size() > TOP_K)
+            right_topk.resize(TOP_K);
+
+        intersection = left_stats.intersect_top_k(left_topk, right_topk);
+        // TODO: How are joined columns handled?
+        result->sorted_value_frequencies[left_col] = intersection;
+        result->sorted_value_frequencies[right_col] = intersection;
     }
 
-    double left_upper = left_model.size;
-    double right_upper = right_model.size;
-    double upper_bound = std::min(left_upper, right_upper) * left_model.mf_product * right_model.mf_product;
+    lower_bound = std::accumulate(intersection.begin(), intersection.end(), 0,
+                                  [](int acc, const std::pair<double, int> &kv)
+                                  { return acc + kv.second; });
 
-    result->set_cardinality(upper_bound);
+    double left_upper = left_model.range.second;
+    double right_upper = right_model.range.second;
+
+    int left_topk_mf = left_topk.empty() ? 0 : left_topk.front().second;
+    int right_topk_mf = right_topk.empty() ? 0 : right_topk.front().second;
+
+    int left_orig_mf = left_stats.most_frequent_values.count(left_col_) ? left_stats.most_frequent_values.at(left_col_) : left_topk_mf;
+    int right_orig_mf = right_stats.most_frequent_values.count(right_col_) ? right_stats.most_frequent_values.at(right_col_) : right_topk_mf;
+
+    int left_mf_value = std::max(left_topk_mf, left_orig_mf);
+    int right_mf_value = std::max(right_topk_mf, right_orig_mf);
+
+    // U-Block formula
+    double upper_bound = std::min(left_upper / left_mf_value, right_upper / right_mf_value) * left_mf_value * right_mf_value;
+
+    auto est_card = comparer_->collapse({lower_bound, upper_bound});
+    result->set_cardinality(est_card);
     result->set_range({lower_bound, upper_bound});
 
     auto merged_stats = left_stats.merge_for_join(right_stats);
@@ -1847,7 +1894,7 @@ SelectivityEstimator::estimate_join(const QueryGraph &G,
     double sel = 1.0;
     if (join_pairs.empty())
     {
-        m->size = lm.size * rm.size; 
+        m->size = lm.size * rm.size;
     }
     else
     {

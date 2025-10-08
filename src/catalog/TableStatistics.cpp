@@ -323,7 +323,6 @@ namespace m
         return result;
     }
 
-    // TableStatistics implementations
     void TableStatistics::compute(const Table &table)
     {
         row_count = table.store().num_rows();
@@ -337,7 +336,7 @@ namespace m
         Tuple tuple(schema);
 
         std::size_t row_count = table.store().num_rows();
-        std::size_t sample_size = row_count; // static_cast<std::size_t>(Options::Get().sample_size);
+        std::size_t sample_size = row_count; // TODO static_cast<std::size_t>(Options::Get().sample_size);
         
 
         double scale = 1.0;
@@ -469,24 +468,47 @@ namespace m
                     count = static_cast<int>(count * scale); // SKALE UP
                 }
             }
-            value_frequencies[full_key] = value_count;
 
-            std::vector<std::pair<Value, int>> sortedVals;
-            sortedVals.reserve(value_count.size());
-            for (const auto &p : value_count) {
-                sortedVals.emplace_back(p.first, p.second);
+            if (numeric_kind[col] != NONE) {
+                std::vector<std::pair<double, int>> sortedTopK;
+                sortedTopK.reserve(value_count.size());
+                for (const auto &p : value_count) {
+                    double key = 0.0;
+                    switch (numeric_kind[col]) {
+                        case INT:
+                            key = static_cast<double>(p.first.as_i());
+                            break;
+                        case FLOAT:
+                            key = static_cast<double>(p.first.as_f());
+                            break;
+                        case DECIMAL: {
+                            const Numeric *numeric = cast<const Numeric>(schema[col].type);
+                            key = double(p.first.as_i()) / pow(10, numeric->scale);
+                            break;
+                        }
+                        default:
+                            break;
+                    }
+                    sortedTopK.emplace_back(key, p.second);
+                }
+                std::sort(sortedTopK.begin(), sortedTopK.end(), 
+                    [](const std::pair<double, int> &a, const std::pair<double, int> &b) {
+                        return a.second > b.second;
+                    });
+                sorted_value_frequencies[full_key] = std::move(sortedTopK);
             }
-            std::sort(sortedVals.begin(), sortedVals.end(), [](const auto &a, const auto &b) {
-                return a.second > b.second;
-            });
-            sorted_value_frequencies[full_key] = std::move(sortedVals);
+
+            value_frequencies[full_key] = value_count;
 
             std::size_t nd = value_count.size();
             distinct_counts[full_key] = nd;
 
             int most_frequent_value_count = 0;
-            if (!sorted_value_frequencies[full_key].empty()) {
-                int most_frequent_value_count = sorted_value_frequencies[full_key][0].second;
+            if (numeric_kind[col] != NONE) {
+                auto it = sorted_value_frequencies.find(full_key);
+                if (it != sorted_value_frequencies.end() && !it->second.empty()) {
+                    most_frequent_value_count = it->second[0].second;
+                }
             }
 
             most_frequent_value_count = static_cast<int>(most_frequent_value_count * scale); // SCALE UP
@@ -520,8 +542,8 @@ namespace m
         }
     }
 
-    std::vector<std::pair<Value, int>> TableStatistics::top_k_values(const std::string &table_col, std::size_t k) const {
-        std::vector<std::pair<Value,int>> result;
+    std::vector<std::pair<double, int>> TableStatistics::top_k_values(const std::string &table_col, std::size_t k) const {
+        std::vector<std::pair<double, int>> result;
         auto it = sorted_value_frequencies.find(table_col);
         if (it == sorted_value_frequencies.end() || k == 0)
             return result;
@@ -529,28 +551,25 @@ namespace m
         result.assign(sortedVec.begin(), sortedVec.begin() + std::min(k, sortedVec.size()));
         return result;
     }
-
-    std::vector<std::pair<Value, int>> intersect_top_k(
-    const std::vector<std::pair<Value, int>> &topk1,
-    const std::vector<std::pair<Value, int>> &topk2)
+    // Should be static or non-class member
+    std::vector<std::pair<double, int>> TableStatistics::intersect_top_k(
+        const std::vector<std::pair<double, int>> &topk1,
+        const std::vector<std::pair<double, int>> &topk2)
     {
-        std::unordered_map<Value, int> freqMap2;
+        std::unordered_map<double, int> freqMap2;
         for (const auto &entry : topk2) {
             freqMap2[entry.first] = entry.second;
         }
-
-        std::vector<std::pair<Value, int>> result;
+        std::vector<std::pair<double, int>> result;
         for (const auto &entry : topk1) {
             auto it = freqMap2.find(entry.first);
             if (it != freqMap2.end()) {
                 result.emplace_back(entry.first, entry.second * it->second);
             }
         }
-
         std::sort(result.begin(), result.end(), [](const auto &a, const auto &b) {
             return a.second > b.second;
         });
-
         return result;
     }
 
@@ -593,6 +612,22 @@ namespace m
         result.value_frequencies = value_frequencies;
         for (auto &kv : other.value_frequencies){
             result.value_frequencies[kv.first] = kv.second;
+        }
+        result.value_frequencies = value_frequencies;
+        for (auto &kv : other.value_frequencies) {
+            result.value_frequencies[kv.first] = kv.second;
+        }
+
+        result.most_frequent_values = most_frequent_values;
+        for (auto &kv : other.most_frequent_values) {
+            result.most_frequent_values[kv.first] = kv.second;
+        }
+
+        result.sorted_value_frequencies = sorted_value_frequencies;
+        for (auto &kv : other.sorted_value_frequencies) {
+            if (result.sorted_value_frequencies.find(kv.first) == result.sorted_value_frequencies.end()) {
+                result.sorted_value_frequencies[kv.first] = kv.second;
+            }
         }
         result.row_count = 0;
         return result;
@@ -1025,6 +1060,158 @@ namespace m
                 }
             }
         }
+        return result;
+    }
+    std::vector<std::pair<double,int>> TableStatistics::filter_top_k_range(
+        const std::vector<std::pair<double,int>> &topk, double low, double high) const
+    {
+        if(topk.empty())
+            return topk;
+            
+        double current_min = std::numeric_limits<double>::max();
+        double current_max = std::numeric_limits<double>::lowest();
+        for (const auto &p : topk) {
+            current_min = std::min(current_min, p.first);
+            current_max = std::max(current_max, p.first);
+        }
+        if(low <= current_min && high >= current_max)
+            return topk;
+            
+        std::vector<std::pair<double,int>> result;
+        for (const auto &p : topk) {
+            if(p.first >= low && p.first <= high)
+                result.push_back(p);
+        }
+        std::sort(result.begin(), result.end(), 
+                [](const std::pair<double,int>& a, const std::pair<double,int>& b) {
+                    return a.second > b.second;
+                });
+        return result;
+    }
+
+    std::vector<std::pair<double,int>> TableStatistics::filter_top_k_greater_than(
+        const std::vector<std::pair<double,int>> &topk, double threshold) const
+    {
+        if(topk.empty())
+            return topk;
+            
+        double current_min = std::numeric_limits<double>::max();
+        double current_max = std::numeric_limits<double>::lowest();
+        for (const auto &p : topk) {
+            current_min = std::min(current_min, p.first);
+            current_max = std::max(current_max, p.first);
+        }
+        if(threshold <= current_min)
+            return topk;
+        if(threshold > current_max)
+            return {};
+
+        std::vector<std::pair<double,int>> result;
+        for (const auto &p : topk) {
+            if(p.first >= threshold)
+                result.push_back(p);
+        }
+        std::sort(result.begin(), result.end(),
+                [](const std::pair<double,int>& a, const std::pair<double,int>& b) {
+                    return a.second > b.second;
+                });
+        return result;
+    }
+
+    std::vector<std::pair<double,int>> TableStatistics::filter_top_k_less_than(
+        const std::vector<std::pair<double,int>> &topk, double threshold) const
+    {
+        if(topk.empty())
+            return topk;
+            
+        double current_min = std::numeric_limits<double>::max();
+        double current_max = std::numeric_limits<double>::lowest();
+        for (const auto &p : topk) {
+            current_min = std::min(current_min, p.first);
+            current_max = std::max(current_max, p.first);
+        }
+        if(threshold >= current_max)
+            return topk;
+        if(threshold < current_min)
+            return {};
+
+        std::vector<std::pair<double,int>> result;
+        for (const auto &p : topk) {
+            if(p.first <= threshold)
+                result.push_back(p);
+        }
+        std::sort(result.begin(), result.end(),
+                [](const std::pair<double,int>& a, const std::pair<double,int>& b) {
+                    return a.second > b.second;
+                });
+        return result;
+    }
+
+    TableStatistics TableStatistics::reduce_top_k_by_cnf(const cnf::CNF &cnf_condition) const
+    {
+        TableStatistics result = *this;
+
+        for (const auto &clause : cnf_condition)
+        {
+            if (clause.size() != 1)
+                continue;
+
+            const auto &predicate = clause[0];
+            if (predicate.negative())
+                continue;
+
+            if (auto binary_expr = cast<const ast::BinaryExpr>(&predicate.expr()))
+            {
+                auto lhs = cast<const ast::Designator>(binary_expr->lhs.get());
+                if (!lhs || !lhs->has_table_name())
+                    continue;
+
+                std::string table_col = std::string(*lhs->table_name.text) + "." +
+                                        std::string(*lhs->attr_name.text);
+                auto topk_it = result.sorted_value_frequencies.find(table_col);
+                if (topk_it == result.sorted_value_frequencies.end())
+                    continue;
+
+                if (auto constant = cast<const ast::Constant>(binary_expr->rhs.get()))
+                {
+                    std::ostringstream oss;
+                    oss << *constant;
+                    std::string value_str = oss.str();
+                    double filter_value;
+                    try
+                    {
+                        filter_value = std::stod(value_str);
+                    }
+                    catch (const std::exception &)
+                    {
+                        continue;
+                    }
+
+                    std::vector<std::pair<double,int>> filtered_topk;
+                    switch (binary_expr->op().type)
+                    {
+                        case TK_LESS:
+                        case TK_LESS_EQUAL:
+                            filtered_topk = filter_top_k_less_than(topk_it->second, filter_value);
+                            break;
+                        case TK_GREATER:
+                        case TK_GREATER_EQUAL:
+                            filtered_topk = filter_top_k_greater_than(topk_it->second, filter_value);
+                            break;
+                        case TK_EQUAL:
+                        {
+                            double eps = 1e-6;
+                            filtered_topk = filter_top_k_range(topk_it->second, filter_value - eps, filter_value + eps);
+                            break;
+                        }
+                        default:
+                            continue;
+                    }
+                    result.sorted_value_frequencies[table_col] = filtered_topk;
+                }
+            }
+        }
+
         return result;
     }
 

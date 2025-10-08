@@ -141,7 +141,7 @@ namespace m
         std::size_t row_count = 0;
 
         std::unordered_map<std::string, std::unordered_map<Value, int>> value_frequencies;
-        std::unordered_map<std::string, std::vector<std::pair<Value, int>>> sorted_value_frequencies;
+        std::unordered_map<std::string, std::vector<std::pair<double, int>>> sorted_value_frequencies;
 
         // Compute statistics for a table
         void compute(const Table &table);
@@ -154,9 +154,21 @@ namespace m
 
         void extract_column_names(const Table &table);
 
-        std::vector<std::pair<Value, int>> top_k_values(const std::string& table_col, std::size_t k) const;
-        std::vector<std::pair<Value, int>> intersect_top_k(const std::vector<std::pair<Value, int>> &topk1, const std::vector<std::pair<Value, int>> &topk2);
-        // Get selectivity for any column (numeric or non-numeric)
+        std::vector<std::pair<double, int>> top_k_values(const std::string& table_col, std::size_t k) const;
+        std::vector<std::pair<double, int>> intersect_top_k(const std::vector<std::pair<double, int>> &topk1,
+                                                            const std::vector<std::pair<double, int>> &topk2);
+        
+        std::vector<std::pair<double, int>> filter_top_k_range(
+            const std::vector<std::pair<double,int>> &topk, double low, double high) const;
+
+        std::vector<std::pair<double, int>> filter_top_k_greater_than(
+            const std::vector<std::pair<double,int>> &topk, double threshold) const;
+
+        std::vector<std::pair<double, int>> filter_top_k_less_than(
+            const std::vector<std::pair<double,int>> &topk, double threshold) const;
+
+        TableStatistics reduce_top_k_by_cnf(const cnf::CNF &cnf_condition) const;
+
         double get_selectivity(const std::string &table_col) const
         {
             auto it = selectivity.find(table_col);

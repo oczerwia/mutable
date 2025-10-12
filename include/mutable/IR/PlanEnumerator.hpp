@@ -299,11 +299,11 @@ namespace m
                                     PT[joined].model->size *= card_data->adjustment_factor;
                                     PT[joined].model->range.first = static_cast<std::size_t>(PT[joined].model->range.first * card_data->lower_bound_adjustment_factor);
                                     PT[joined].model->range.second = static_cast<std::size_t>(PT[joined].model->range.second * card_data->upper_bound_adjustment_factor);
-                                    current_range = PT[joined].model->range;
+                                    current_range = PT[joined].model->get_range();
                                 }
                                 else
                                 {
-                                    current_range =  PT[joined].model->range;
+                                    current_range= PT[joined].model->get_range();
                                 }
 
                                 if (comparer_->compare(current_range, best_range))

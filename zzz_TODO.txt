@@ -1,19 +1,28 @@
 TODO / Next steps
 
 
+Next steps:
+- Deactivate the bound tightening
+- Activate exact matching again and return the exact value that we know already
+- Check if and how DP stores options
+- Adjust outline
+- request server access
+
+
 Tomorrow:
 
-- extend so that filters can be taken into account (need to sample all columns, then do set intersection and remove for all columns)
-- Use the at method of the rowstore to get the full row
 
-tuesday:
-[MUST]: make significant progress in the outline
-[NICE]: Include STATS and JOB
+
+- Check fleeing to ignorance that was first shown in Consistently Estimating the Selectivity of Conjuncts of Predicates
+- Idea: Pick plans with more uncertainty during warm up to prevent fleeing from uncertainty
+- Change to normal sampling
+
+- Finally implement a lower bound
 
 
 sunday:
 - Finish outline as far as possible without benchmark (have to send at least next wednesday!)
-
+- understand how the multi filter is handled by mutable and adjust estimation if needed (query 20 )
 - finish most visualizations
 
 Monday:

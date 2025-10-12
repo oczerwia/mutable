@@ -20,18 +20,53 @@ echo "Running all configurations from launch.json..."
 #     --plan-enumerator GOO \
 #     --cardinality-estimator CartesianProduct \
 #     --backend Interpreter \
-#     "$QUERY_FILE" > "${OUTPUT_DIR}/CartesianProduct_output.log" 2>&1
-# echo "Output saved to ${OUTPUT_DIR}/CartesianProduct_output.log"
+#     "$QUERY_FILE" > "${OUTPUT_DIR}/CartesianProduct_raw.log" 2>&1
+# echo "Output saved to ${OUTPUT_DIR}/CartesianProduct_raw.log"
 
-# echo "Running SelectivityBased..."
+# echo "Running CartesianProduct..."
 # $PROGRAM \
-#     --no-learn-cardinalities  \
-#     --cardinality-csv ${OUTPUT_DIR}/Selecvitity.csv \
+#     --no-statistics \
+#     --cardinality-csv ${OUTPUT_DIR}/CartesianProduct.csv \
 #     --plan-enumerator GOO \
-#     --cardinality-estimator Selectivitybased \
+#     --cardinality-estimator CartesianProduct \
 #     --backend Interpreter \
-#     "$QUERY_FILE" > "${OUTPUT_DIR}/SelectivityBased_output.log" 2>&1
-# echo "Output saved to ${OUTPUT_DIR}/SelectivityBased_output.log"
+#     "$QUERY_FILE" > "${OUTPUT_DIR}/CartesianProduct_learned.log" 2>&1
+# echo "Output saved to ${OUTPUT_DIR}/CartesianProduct_learned.log"
+
+
+echo "Running SelectivityBased..."
+$PROGRAM \
+    --no-learn-cardinalities \
+    --cardinality-csv ${OUTPUT_DIR}/Selecvitity.csv \
+    --plan-enumerator GOO \
+    --cardinality-estimator Selectivitybased \
+    --backend Interpreter \
+    --sample-size 100000 \
+    "$QUERY_FILE" > "${OUTPUT_DIR}/SelectivityBased_raw.log" 2>&1
+echo "Output saved to ${OUTPUT_DIR}/SelectivityBased_raw.log"
+
+echo "Running SelectivityBased..."
+$PROGRAM \
+    --cardinality-csv ${OUTPUT_DIR}/Selecvitity.csv \
+    --plan-enumerator GOO \
+    --cardinality-estimator Selectivitybased \
+    --backend Interpreter \
+    --sample-size 100000 \
+    "$QUERY_FILE" > "${OUTPUT_DIR}/SelectivityBased_learned.log" 2>&1
+echo "Output saved to ${OUTPUT_DIR}/SelectivityBased_learned.log"
+
+# Run a single dry run
+echo "Running ExperimentalRangeEstimator..."
+$PROGRAM \
+    --plan-enumerator RangeGOO \
+    --cardinality-estimator ExperimentalRange \
+    --backend Interpreter \
+    --sample-size 100000 \
+    --cardinality-csv ${OUTPUT_DIR}/ExperimentalRangeEstimator_dry.csv \
+    --collapse-function Mean \
+    --no-learn-cardinalities \
+    "$QUERY_FILE" > "${OUTPUT_DIR}/ExperimentalRangeEstimator_dry.log" 2>&1
+echo "Output saved to ${OUTPUT_DIR}/ExperimentalRangeEstimator_dry.log"
 
 echo "Running ExperimentalRangeEstimator..."
 $PROGRAM \
@@ -65,7 +100,6 @@ $PROGRAM \
     --collapse-function Mean \
     "$QUERY_FILE" > "${OUTPUT_DIR}/ExperimentalRangeEstimator_COLLAPSE_MEAN_2.log" 2>&1
 echo "Output saved to ${OUTPUT_DIR}/ExperimentalRangeEstimator_COLLAPSE_MEAN_2.log"
-
 
 
 echo "Running ExperimentalRangeEstimator..."

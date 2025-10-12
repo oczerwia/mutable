@@ -143,6 +143,8 @@ namespace m
         std::unordered_map<std::string, std::unordered_map<Value, int>> value_frequencies;
         std::unordered_map<std::string, std::vector<std::pair<double, int>>> sorted_value_frequencies;
 
+        std::unordered_map<std::string, double> max_multiplicity_per_value;
+
         // Compute statistics for a table
         void compute(const Table &table);
 

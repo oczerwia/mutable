@@ -776,11 +776,13 @@ ExperimentalRangeEstimator::estimate_filter(const QueryGraph &G, const DataModel
     result->original_tables = model.original_tables;
 
     double min_topk_sum = std::numeric_limits<double>::max();
-    for (const auto &entry : result->get_stats().sorted_value_frequencies) {
+    for (const auto &entry : result->get_stats().sorted_value_frequencies)
+    {
         double sum_frequencies = std::accumulate(entry.second.begin(), entry.second.end(), 0.0,
-            [](double acc, const std::pair<double, int> &p) {
-                return acc + p.second;
-            });
+                                                 [](double acc, const std::pair<double, int> &p)
+                                                 {
+                                                     return acc + p.second;
+                                                 });
         min_topk_sum = std::min(min_topk_sum, sum_frequencies);
     }
     if (min_topk_sum == std::numeric_limits<double>::max())
@@ -789,8 +791,8 @@ ExperimentalRangeEstimator::estimate_filter(const QueryGraph &G, const DataModel
     result->range.first = min_topk_sum;
 
     result->range.second = model.size;
-    // result->set_cardinality(model.size);
-    // result->set_range(model.range);
+    result->set_cardinality(model.size);
+    result->set_range(model.range);
 
     return result;
 }
@@ -922,13 +924,8 @@ ExperimentalRangeEstimator::estimate_join(const QueryGraph &G, const DataModel &
         left_topk = left_it->second;
         right_topk = right_it->second;
 
-        if (left_topk.size() > TOP_K)
-            left_topk.resize(TOP_K);
-        if (right_topk.size() > TOP_K)
-            right_topk.resize(TOP_K);
-
         intersection = left_stats.intersect_top_k(left_topk, right_topk);
-        // TODO: How are joined columns handled?
+
         result->sorted_value_frequencies[left_col] = intersection;
         result->sorted_value_frequencies[right_col] = intersection;
     }
@@ -937,11 +934,12 @@ ExperimentalRangeEstimator::estimate_join(const QueryGraph &G, const DataModel &
                                   [](int acc, const std::pair<double, int> &kv)
                                   { return acc + kv.second; });
 
-    double left_upper = left_model.range.second;
-    double right_upper = right_model.range.second;
+    // All for the U-Block
+    double left_upper = left_model.range.second; // previous upper bound left
+    double right_upper = right_model.range.second; // previous upper bound right
 
-    int left_topk_mf = left_topk.empty() ? 0 : left_topk.front().second;
-    int right_topk_mf = right_topk.empty() ? 0 : right_topk.front().second;
+    int left_topk_mf = left_topk.empty() ? 1 : left_topk.front().second;
+    int right_topk_mf = right_topk.empty() ? 1 : right_topk.front().second;
 
     int left_orig_mf = left_stats.most_frequent_values.count(left_col_) ? left_stats.most_frequent_values.at(left_col_) : left_topk_mf;
     int right_orig_mf = right_stats.most_frequent_values.count(right_col_) ? right_stats.most_frequent_values.at(right_col_) : right_topk_mf;
@@ -949,12 +947,108 @@ ExperimentalRangeEstimator::estimate_join(const QueryGraph &G, const DataModel &
     int left_mf_value = std::max(left_topk_mf, left_orig_mf);
     int right_mf_value = std::max(right_topk_mf, right_orig_mf);
 
-    // U-Block formula
-    double upper_bound = std::min(left_upper / left_mf_value, right_upper / right_mf_value) * left_mf_value * right_mf_value;
 
-    auto est_card = comparer_->collapse({lower_bound, upper_bound});
+    double max_multiplicity_per_value = left_mf_value * right_mf_value;
+    // U-Block formula
+    double upper_bound = std::min(left_upper / left_mf_value, right_upper / right_mf_value) * max_multiplicity_per_value;
+
+    
+    // Advanced U-Block + Top-K extension
+    // left kth value frequency
+    int left_topk_kth = left_topk.empty() ? 1 : left_topk.back().second;
+     // right kth value frequency
+    int right_topk_kth = right_topk.empty() ? 1 : right_topk.back().second;
+
+    // lower bound value (is computed above)
+
+    std::unordered_map<double, int> intersection_map;
+    for (const auto &entry : intersection) {
+        intersection_map[entry.first] = entry.second;
+    }
+
+
+    // inner join left top-k with intersection
+    std::vector<std::pair<double, int>> left_intersecting_keys;
+    int left_intersecting_frequencies = 0;
+    for (const auto &entry : left_topk) {
+        auto it = intersection_map.find(entry.first);
+        if (it != intersection_map.end()) {
+            left_intersecting_keys.emplace_back(entry.first, entry.second);
+            left_intersecting_frequencies += entry.second;
+        }
+    }
+    
+    std::vector<std::pair<double, int>> right_intersecting_keys;
+    int right_intersecting_frequencies = 0;
+    for (const auto &entry : right_topk) {
+        auto it = intersection_map.find(entry.first);
+        if (it != intersection_map.end()) {
+            right_intersecting_keys.emplace_back(entry.first, entry.second);
+            right_intersecting_frequencies += entry.second;
+        }
+    }
+
+   
+    // previous kth value frequency left (of already merged subproblem)
+    double left_max_multip = left_stats.max_multiplicity_per_value.count(left_col_) ? left_stats.max_multiplicity_per_value.at(left_col_) : left_topk_kth;
+    // previous kth value frequency right (of already merged subproblem)
+    double right_max_multip = right_stats.max_multiplicity_per_value.count(right_col_) ? right_stats.max_multiplicity_per_value.at(right_col_) : right_topk_kth;
+
+    double adjusted_left_upper = std::max(0.0, left_upper - left_intersecting_frequencies);
+    double adjusted_right_upper = std::max(0.0, right_upper - right_intersecting_frequencies);
+
+    double new_max_multiplicity_per_value = left_max_multip * right_max_multip;
+    // final (non-deterministic) advanced U-block formula
+    auto left_side_new_ublock = adjusted_left_upper / left_max_multip;
+    auto right_side_new_ublock = adjusted_right_upper / right_max_multip;
+    double new_u_block = std::min(left_side_new_ublock, right_side_new_ublock) * new_max_multiplicity_per_value + lower_bound;
+
+
+    // new_u_block does not consider matches between non top-k and top-k from the other attribute (vice versa)
+    // therefore we assume that there are x further value with the kth frequency on the left and multiply each frequency of the right top-k (vice versa)
+
+    // Sum over left_topk_kth * each right_topk element
+    double remaining_matches_left_to_right = 0.0;
+    for (const auto &entry : right_topk) {
+        if (intersection_map.find(entry.first) == intersection_map.end()) {
+            remaining_matches_left_to_right += left_topk_kth * entry.second;
+        }
+    }
+
+    double remaining_matches_right_to_left = 0.0;
+    for (const auto &entry : left_topk) {
+        if (intersection_map.find(entry.first) == intersection_map.end()) {
+            remaining_matches_right_to_left += right_topk_kth * entry.second;
+        }
+    }
+
+    double symmetric_remaining = std::max(remaining_matches_left_to_right,
+                                      remaining_matches_right_to_left);
+
+    double deterministic_new_u_block = new_u_block + symmetric_remaining;
+
+    // since my method does not accound for asymetric relationships (1:N), we can take U-block which does it
+    auto final_upper_bound = std::min(deterministic_new_u_block, upper_bound);
+
+    std::cout << "U-block: " << upper_bound << std::endl;
+    std::cout << "Lower bound: " << lower_bound << std::endl;
+    std::cout << "New u-block: " << new_u_block << std::endl;
+    std::cout << "Remaining L->R: " << remaining_matches_left_to_right << std::endl;
+    std::cout << "Remaining R->L: " << remaining_matches_right_to_left << std::endl;
+    std::cout << "Final intersection: " << deterministic_new_u_block << std::endl;
+    std::cout << "Taken bound " << final_upper_bound << std::endl;
+
+
+    
+    // set max multiplicity of this node
+    result->max_multiplicity_per_value[left_col_] = new_max_multiplicity_per_value;
+    result->max_multiplicity_per_value[right_col_] = new_max_multiplicity_per_value;
+
+
+    // Cost computation
+    auto est_card = comparer_->collapse({lower_bound, final_upper_bound});
     result->set_cardinality(est_card);
-    result->set_range({lower_bound, upper_bound});
+    result->set_range({lower_bound, final_upper_bound});
 
     auto merged_stats = left_stats.merge_for_join(right_stats);
     merged_stats.row_count = result->size;

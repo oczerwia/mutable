@@ -56,12 +56,12 @@ CREATE TABLE movie_info (
     note CHAR(128)
 );
 
-IMPORT INTO cast_info DSV "benchmark/job-light/data/cast_info.csv" ROWS 10000000;
-IMPORT INTO title DSV "benchmark/job-light/data/title.csv" ROWS 10000000; 
-IMPORT INTO movie_companies DSV "benchmark/job-light/data/movie_companies_cleaned.csv" ROWS 10000000; 
-IMPORT INTO movie_info_idx DSV "benchmark/job-light/data/movie_info_idx_cleaned.csv" ROWS 10000000;
-IMPORT INTO movie_keyword DSV "benchmark/job-light/data/movie_keyword.csv" ROWS 10000000;
-IMPORT INTO movie_info DSV "benchmark/job-light/data/movie_info.csv" ROWS 10000000; 
+IMPORT INTO cast_info DSV "benchmark/job-data/cast_info.csv" ROWS 1000;
+IMPORT INTO title DSV "benchmark/job-data/title.csv" ROWS 1000; 
+IMPORT INTO movie_companies DSV "benchmark/job-data/movie_companies_cleaned.csv" ROWS 1000; 
+IMPORT INTO movie_info_idx DSV "benchmark/job-data/movie_info_idx_cleaned.csv" ROWS 1000;
+IMPORT INTO movie_keyword DSV "benchmark/job-data/movie_keyword.csv" ROWS 1000;
+IMPORT INTO movie_info DSV "benchmark/job-data/movie_info.csv" ROWS 1000; 
 
 -- 1
 SELECT COUNT(*) FROM movie_companies, title, movie_info_idx WHERE title.id=movie_companies.movie_id AND title.id=movie_info_idx.movie_id AND movie_info_idx.info_type_id=112 AND movie_companies.company_type_id=2;

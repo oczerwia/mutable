@@ -1,12 +1,10 @@
 #define DISABLE_HISTOGRAMS
 
-// Then wrap histogram operations with this macro
 #ifndef DISABLE_HISTOGRAMS
 #define HISTOGRAM_OP(code) code
 #else
 #define HISTOGRAM_OP(code) // disabled
 #endif
-
 
 #include <mutable/catalog/TableStatistics.hpp>
 #include <mutable/catalog/Schema.hpp>
@@ -28,7 +26,6 @@
 
 namespace m
 {
-    // ColumnHistogram implementations (simplified for numeric-only)
     ColumnHistogram ColumnHistogram::create_numeric_histogram(const std::vector<double> &values,
                                                               std::size_t distinct_count,
                                                               std::size_t null_count,
@@ -44,15 +41,12 @@ namespace m
             return hist;
         }
 
-        // Find min and max
         auto minmax = std::minmax_element(values.begin(), values.end());
         hist.min = *minmax.first;
         hist.max = *minmax.second;
 
-        // Initialize bins
         hist.bins.resize(num_bins, 0);
 
-        // Create equi-width bins
         if (hist.max > hist.min)
         {
             double bin_width = (hist.max - hist.min) / num_bins;
@@ -78,10 +72,9 @@ namespace m
     {
         if (bins.empty() || other.bins.empty())
         {
-            return ColumnHistogram(); // Return empty histogram
+            return ColumnHistogram();
         }
 
-        // Align histograms to same range and bin count
         auto [aligned_left, aligned_right] = align_histograms(*this, other);
 
         ColumnHistogram result;
@@ -89,16 +82,13 @@ namespace m
         result.max = std::min(aligned_left.max, aligned_right.max);
         result.bins.resize(aligned_left.bins.size());
 
-        // FIXED: Cartesian product within each bin
         for (std::size_t i = 0; i < result.bins.size(); ++i)
         {
-            // For equi-join: multiply bin counts directly (cartesian product within bin)
             if (aligned_left.bins[i] > 0 && aligned_right.bins[i] > 0)
             {
-                // Check for potential overflow before multiplication
                 if (aligned_left.bins[i] > std::numeric_limits<std::size_t>::max() / aligned_right.bins[i])
                 {
-                    // Use conservative estimate to prevent overflow
+                    // Use conservative estimate
                     result.bins[i] = std::min(aligned_left.bins[i], aligned_right.bins[i]);
                 }
                 else
@@ -112,18 +102,15 @@ namespace m
             }
         }
 
-        // Conservative join selectivity: min of distinct counts
         result.num_distinct = std::min(aligned_left.num_distinct, aligned_right.num_distinct);
-        result.null_count = 0; // Nulls don't participate in joins
+        result.null_count = 0;
         result.total_count = std::accumulate(result.bins.begin(), result.bins.end(), std::size_t(0));
 
-        // SAFETY CHECK: Cap result at reasonable bounds
         std::size_t max_possible_join =
             (aligned_left.total_count - aligned_left.null_count) *
             (aligned_right.total_count - aligned_right.null_count);
         if (result.total_count > max_possible_join)
         {
-            // Scale down proportionally if result is too large
             double scale_factor = double(max_possible_join) / double(result.total_count);
             for (auto &bin : result.bins)
             {
@@ -139,10 +126,9 @@ namespace m
     {
         if (bins.empty() || other.bins.empty())
         {
-            return ColumnHistogram(); // Return empty histogram
+            return ColumnHistogram();
         }
 
-        // Align histograms
         auto [aligned_left, aligned_right] = align_histograms(*this, other);
 
         ColumnHistogram result;
@@ -150,7 +136,6 @@ namespace m
         result.max = std::max(aligned_left.max, aligned_right.max);
         result.bins.resize(aligned_left.bins.size());
 
-        // Add corresponding bins
         for (std::size_t i = 0; i < result.bins.size(); ++i)
         {
             result.bins[i] = aligned_left.bins[i] + aligned_right.bins[i];
@@ -167,7 +152,7 @@ namespace m
     {
         if (bins.empty() || total_count == 0)
         {
-            return 0.1; // Default selectivity
+            return 0.1;
         }
 
         if (max <= min)
@@ -211,12 +196,10 @@ namespace m
         if (null_count > total_count)
             return false;
 
-        // Check that bin counts sum correctly
         std::size_t bin_sum = std::accumulate(bins.begin(), bins.end(), std::size_t(0));
         if (bin_sum + null_count != total_count)
             return false;
 
-        // Check for overflow in bins
         for (auto bin_count : bins)
         {
             if (bin_count > total_count)
@@ -231,22 +214,19 @@ namespace m
     {
         if (left.bins.empty() || right.bins.empty())
         {
-            return {left, right}; // Return as-is for empty histograms
+            return {left, right};
         }
 
-        // Find common range and bin count
         double common_min = std::min(left.min, right.min);
         double common_max = std::max(left.max, right.max);
         std::size_t common_bins = std::max(left.bins.size(), right.bins.size());
 
-        // If histograms are already aligned, return as-is
         if (left.min == right.min && left.max == right.max &&
             left.bins.size() == right.bins.size())
         {
             return {left, right};
         }
 
-        // Create aligned versions with uniform redistribution
         ColumnHistogram aligned_left = redistribute_to_range(left, common_min, common_max, common_bins);
         ColumnHistogram aligned_right = redistribute_to_range(right, common_min, common_max, common_bins);
 
@@ -265,17 +245,14 @@ namespace m
         result.num_distinct = hist.num_distinct;
         result.total_count = hist.total_count;
 
-        // If original histogram is empty or degenerate, return empty result
         if (hist.bins.empty() || hist.max <= hist.min || new_max <= new_min)
         {
             return result;
         }
 
-        // Calculate bin widths
         double old_bin_width = (hist.max - hist.min) / hist.bins.size();
         double new_bin_width = (new_max - new_min) / new_bin_count;
 
-        // Redistribute each old bin uniformly across new bins
         for (std::size_t old_bin = 0; old_bin < hist.bins.size(); ++old_bin)
         {
             if (hist.bins[old_bin] == 0)
@@ -284,26 +261,22 @@ namespace m
             double old_bin_start = hist.min + old_bin * old_bin_width;
             double old_bin_end = hist.min + (old_bin + 1) * old_bin_width;
 
-            // Find overlap with new range
             double overlap_start = std::max(old_bin_start, new_min);
             double overlap_end = std::min(old_bin_end, new_max);
 
             if (overlap_start >= overlap_end)
                 continue; // No overlap
 
-            // Distribute this old bin's count across overlapping new bins
             for (std::size_t new_bin = 0; new_bin < new_bin_count; ++new_bin)
             {
                 double new_bin_start = new_min + new_bin * new_bin_width;
                 double new_bin_end = new_min + (new_bin + 1) * new_bin_width;
 
-                // Calculate overlap between old bin and new bin
                 double bin_overlap_start = std::max(overlap_start, new_bin_start);
                 double bin_overlap_end = std::min(overlap_end, new_bin_end);
 
                 if (bin_overlap_start < bin_overlap_end)
                 {
-                    // Calculate fraction of old bin that goes into this new bin
                     double overlap_width = bin_overlap_end - bin_overlap_start;
                     double old_bin_kept_width = overlap_end - overlap_start;
                     double fraction = overlap_width / old_bin_kept_width;
@@ -316,51 +289,55 @@ namespace m
         return result;
     }
 
-    std::unordered_map<Value, int> intersect_value_frequencies(
-        const std::unordered_map<Value, int>& left,
-        const std::unordered_map<Value, int>& right)
+    // std::unordered_map<Value, int> intersect_value_frequencies(
+    //     const std::unordered_map<Value, int>& left,
+    //     const std::unordered_map<Value, int>& right)
+    // {
+    //     std::unordered_map<Value, int> result;
+
+    //     for (const auto& [val, left_freq] : left) {
+    //         auto it = right.find(val);
+    //         if (it != right.end()) {
+    //             int right_freq = it->second;
+    //             result[val] = left_freq * right_freq;
+    //         }
+    //     }
+
+    //     return result;
+    // }
+
+    void TableStatistics::compute(const Table &table)
     {
-        std::unordered_map<Value, int> result;
+        row_count = table.store().num_rows();
+        selectivity.clear();
+        histograms.clear();
 
-        for (const auto& [val, left_freq] : left) {
-            auto it = right.find(val);
-            if (it != right.end()) {
-                int right_freq = it->second;
-                result[val] = left_freq * right_freq;
-            }
-        }
+        extract_table_name(table);
+        extract_column_names(table);
 
-        return result;
-    }
+        const auto &schema = table.schema();
+        std::vector<std::vector<double>> numeric_values(schema.num_entries());
+        std::vector<std::size_t> null_counts(schema.num_entries(), 0);
 
-void TableStatistics::compute(const Table &table)
-{
-    row_count = table.store().num_rows();
-    selectivity.clear();
-    histograms.clear();
+        enum NumericKind
+        {
+            NONE,
+            INT,
+            FLOAT,
+            DECIMAL
+        };
+        std::vector<NumericKind> numeric_kind(schema.num_entries(), NONE);
 
-    extract_table_name(table);
-    extract_column_names(table);
+        std::vector<bool> is_string(schema.num_entries(), false);
 
-    const auto &schema = table.schema();
-    
-    std::vector<std::vector<double>> numeric_values(schema.num_entries());
-    std::vector<std::size_t> null_counts(schema.num_entries(), 0);
-    std::vector<std::unordered_map<Value, int>> value_counts(schema.num_entries());
-    
-    enum NumericKind {
-        NONE,
-        INT,
-        FLOAT,
-        DECIMAL
-    };
-    std::vector<NumericKind> numeric_kind(schema.num_entries(), NONE);
-
-    for (std::size_t col = 0; col < schema.num_entries(); ++col) {
-        const Type *ty = schema[col].type;
-        const Numeric *numeric = cast<const Numeric>(ty);
-        if (numeric) {
-            switch (numeric->kind) {
+        for (std::size_t col = 0; col < schema.num_entries(); ++col)
+        {
+            const Type *ty = schema[col].type;
+            const Numeric *numeric = cast<const Numeric>(ty);
+            if (numeric)
+            {
+                switch (numeric->kind)
+                {
                 case Numeric::N_Int:
                     numeric_kind[col] = INT;
                     break;
@@ -373,118 +350,187 @@ void TableStatistics::compute(const Table &table)
                 default:
                     numeric_kind[col] = NONE;
                     break;
-            }
-        }
-    }
-
-    auto loader = Interpreter::compile_load(schema, table.store().memory().addr(), table.layout(), schema, 0, 0);
-    Tuple tuple(schema);
-
-    for (std::size_t row = 0; row < row_count; ++row) {
-        Tuple *args[] = {&tuple};
-        loader(args);
-        
-        for (std::size_t col = 0; col < schema.num_entries(); ++col) {
-            if (!tuple.is_null(col)) {
-                ++value_counts[col][tuple[col]];
-                
-                if (numeric_kind[col] != NONE) {
-                    const Numeric *numeric = cast<const Numeric>(schema[col].type);
-                    switch (numeric_kind[col]) {
-                        case INT:
-                            numeric_values[col].push_back(static_cast<double>(tuple[col].as_i()));
-                            break;
-                        case FLOAT:
-                            numeric_values[col].push_back(static_cast<double>(tuple[col].as_f()));
-                            break;
-                        case DECIMAL:
-                            numeric_values[col].push_back(double(tuple[col].as_i()) / pow(10, numeric->scale));
-                            break;
-                        default: 
-                            break;
-                    }
                 }
-            } else {
-                null_counts[col]++;
+            }
+            else
+            {
+                if (ty && ty->is_character_sequence())
+                {
+                    is_string[col] = true;
+                }
             }
         }
-    }
 
-    const std::size_t TOP_K = Options::Get().top_k;
-    
-    for (std::size_t col = 0; col < schema.num_entries(); ++col) {
-        std::string col_name = std::string(*schema[col].id.name);
-        std::string full_key = table_name + "." + col_name;
+        auto loader = Interpreter::compile_load(
+            schema, table.store().memory().addr(), table.layout(), schema, 0, 0);
+        Tuple tuple(schema);
 
-        auto& value_count = value_counts[col];
-        
-        std::size_t nd = value_counts[col].size();
-        distinct_counts[full_key] = nd;        
-    
-        if (numeric_kind[col] != NONE && !value_counts[col].empty()) {
-            std::unordered_map<double, int> numeric_freq;
-            for (const auto &p : value_counts[col]) {
-                double key = 0.0;
-                const Numeric *numeric = cast<const Numeric>(schema[col].type);
-                switch (numeric_kind[col]) {
+        std::vector<std::unordered_map<double, int>> numeric_counts(schema.num_entries());
+        std::vector<std::unordered_map<std::string, int>> string_counts(schema.num_entries());
+
+        for (std::size_t col = 0; col < schema.num_entries(); ++col)
+        {
+            if (numeric_kind[col] != NONE)
+                numeric_counts[col].reserve(row_count / 10 + 1);
+            if (is_string[col])
+                string_counts[col].reserve(row_count / 10 + 1);
+        }
+
+        for (std::size_t row = 0; row < row_count; ++row)
+        {
+            Tuple *args[] = {&tuple};
+            loader(args);
+
+            for (std::size_t col = 0; col < schema.num_entries(); ++col)
+            {
+                if (tuple.is_null(col))
+                {
+                    ++null_counts[col];
+                    continue;
+                }
+
+                if (numeric_kind[col] != NONE)
+                {
+                    double key = 0.0;
+                    const Numeric *numeric = cast<const Numeric>(schema[col].type);
+                    switch (numeric_kind[col])
+                    {
                     case INT:
-                        key = static_cast<double>(p.first.as_i());
+                        key = static_cast<double>(tuple[col].as_i());
                         break;
                     case FLOAT:
-                        key = static_cast<double>(p.first.as_f());
+                        key = static_cast<double>(tuple[col].as_f());
                         break;
                     case DECIMAL:
-                        key = double(p.first.as_i()) / pow(10, numeric->scale);
+                        key = double(tuple[col].as_i()) / pow(10, numeric->scale);
                         break;
                     default:
                         break;
+                    }
+                    ++numeric_counts[col][key];
+                    numeric_values[col].push_back(key);
                 }
-                numeric_freq[key] = p.second;
+                else if (is_string[col])
+                {
+                    std::ostringstream oss;
+                    oss << tuple[col];
+                    std::string sval = oss.str();
+                    ++string_counts[col][sval];
+                }
             }
-            
-            std::vector<std::pair<double, int>> sortedTopK;
-            sortedTopK.reserve(numeric_freq.size());
-            for (const auto& [key, freq] : numeric_freq) {
-                sortedTopK.emplace_back(key, freq);
+        }
+
+        const std::size_t TOP_K = Options::Get().top_k;
+
+        for (std::size_t col = 0; col < schema.num_entries(); ++col)
+        {
+            std::string col_name = std::string(*schema[col].id.name);
+            std::string full_key = table_name + "." + col_name;
+
+            double sel = 1.0;
+
+            if (numeric_kind[col] != NONE && !numeric_counts[col].empty())
+            {
+                auto &freq_map = numeric_counts[col];
+                std::vector<std::pair<double, int>> freq_vec;
+                freq_vec.reserve(freq_map.size());
+                for (const auto &[key, freq] : freq_map)
+                    freq_vec.emplace_back(key, freq);
+
+                if (freq_vec.size() > TOP_K)
+                {
+                    std::nth_element(
+                        freq_vec.begin(),
+                        freq_vec.begin() + TOP_K,
+                        freq_vec.end(),
+                        [](const auto &a, const auto &b)
+                        { return a.second > b.second; });
+                    freq_vec.resize(TOP_K);
+                }
+
+                std::sort(freq_vec.begin(), freq_vec.end(),
+                          [](const auto &a, const auto &b)
+                          { return a.first < b.first; });
+
+                int max_freq = 0;
+                for (const auto &p : freq_vec)
+                    if (p.second > max_freq)
+                        max_freq = p.second;
+
+                sorted_value_frequencies[full_key] = std::move(freq_vec);
+                most_frequent_values[full_key] = max_freq;
+
+                std::size_t nd = freq_map.size();
+                distinct_counts[full_key] = nd;
+                sel = double(nd) / double(row_count);
+
+                auto &col_values = numeric_values[col];
+                if (!col_values.empty())
+                {
+                    auto minmax = std::minmax_element(col_values.begin(), col_values.end());
+                    column_min[full_key] = *minmax.first;
+                    column_max[full_key] = *minmax.second;
+
+                    HISTOGRAM_OP(
+                        histograms[full_key] = ColumnHistogram::create_numeric_histogram(
+                            col_values, nd, null_counts[col],
+                            static_cast<std::size_t>(Options::Get().histogram_bins));)
+                }
             }
-            
-            std::sort(sortedTopK.begin(), sortedTopK.end(), 
-                [](const std::pair<double, int> &a, const std::pair<double, int> &b) {
-                    return a.second > b.second;
-                });
-            
-            if (sortedTopK.size() > TOP_K) {
-                sortedTopK.resize(TOP_K);
+            else if (is_string[col] && !string_counts[col].empty())
+            {
+                auto &freq_map = string_counts[col];
+                std::vector<std::pair<std::string, int>> freq_vec;
+                freq_vec.reserve(freq_map.size());
+                for (const auto &kv : freq_map)
+                    freq_vec.emplace_back(kv.first, kv.second);
+
+                if (freq_vec.size() > TOP_K)
+                {
+                    std::nth_element(
+                        freq_vec.begin(),
+                        freq_vec.begin() + TOP_K,
+                        freq_vec.end(),
+                        [](const auto &a, const auto &b)
+                        { return a.second > b.second; });
+                    freq_vec.resize(TOP_K);
+                }
+
+                std::sort(freq_vec.begin(), freq_vec.end(),
+                          [](const auto &a, const auto &b)
+                          { return a.first < b.first; });
+
+                int max_freq = 0;
+                for (const auto &p : freq_vec)
+                    if (p.second > max_freq)
+                        max_freq = p.second;
+
+                sorted_string_value_frequencies[full_key] = std::move(freq_vec);
+                most_frequent_values[full_key] = max_freq;
+
+                std::size_t nd = freq_map.size();
+                distinct_counts[full_key] = nd;
+                sel = double(nd) / double(row_count);
+            }
+            else
+            {
+                most_frequent_values[full_key] = 0;
+                distinct_counts[full_key] = 0;
             }
 
-            value_frequencies[full_key] = std::move(value_count);
-            
-            sorted_value_frequencies[full_key] = std::move(sortedTopK);
-            
-            most_frequent_values[full_key] = sortedTopK.empty() ? 0 : sortedTopK[0].second;
-        } else {
-            most_frequent_values[full_key] = 0;
-        }        
+            selectivity[full_key] = sel;
 
-        double sel = double(nd) / row_count;
-        selectivity[full_key] = sel;
-
-        if (numeric_kind[col] != NONE && !numeric_values[col].empty()) {
-            HISTOGRAM_OP(
-                auto minmax = std::minmax_element(numeric_values[col].begin(), numeric_values[col].end());
-                column_min[full_key] = *minmax.first;
-                column_max[full_key] = *minmax.second;
-
-                histograms[full_key] = ColumnHistogram::create_numeric_histogram(
-                    numeric_values[col], nd, null_counts[col], 
-                    static_cast<std::size_t>(Options::Get().histogram_bins));
-            )
+            numeric_counts[col].clear();
+            numeric_counts[col].rehash(0);
+            numeric_values[col].clear();
+            numeric_values[col].shrink_to_fit();
+            string_counts[col].clear();
+            string_counts[col].rehash(0);
         }
     }
-}
 
-
-    std::vector<std::pair<double, int>> TableStatistics::top_k_values(const std::string &table_col, std::size_t k) const {
+    std::vector<std::pair<double, int>> TableStatistics::top_k_values(const std::string &table_col, std::size_t k) const
+    {
         std::vector<std::pair<double, int>> result;
         auto it = sorted_value_frequencies.find(table_col);
         if (it == sorted_value_frequencies.end() || k == 0)
@@ -493,31 +539,98 @@ void TableStatistics::compute(const Table &table)
         result.assign(sortedVec.begin(), sortedVec.begin() + std::min(k, sortedVec.size()));
         return result;
     }
+
+    std::vector<std::pair<std::string, int>> TableStatistics::top_k_string_values(const std::string &table_col, std::size_t k) const
+    {
+        auto it = sorted_string_value_frequencies.find(table_col);
+        if (it == sorted_string_value_frequencies.end() || k == 0)
+            return {};
+        const auto &vec = it->second;
+        return std::vector<std::pair<std::string, int>>(vec.begin(), vec.begin() + std::min(k, vec.size()));
+    }
+
+    std::vector<std::pair<std::string, int>> TableStatistics::intersect_top_k_string(
+        const std::vector<std::pair<std::string, int>> &topk1,
+        const std::vector<std::pair<std::string, int>> &topk2) const
+    {
+        if (topk1.empty() || topk2.empty())
+            return {};
+
+        const auto *small = &topk1;
+        const auto *large = &topk2;
+        if (topk2.size() < topk1.size())
+        {
+            small = &topk2;
+            large = &topk1;
+        }
+
+        std::unordered_map<std::string, int> map;
+        map.reserve(small->size() * 2);
+        for (const auto &p : *small)
+        {
+            map.emplace(p.first, p.second);
+        }
+
+        std::vector<std::pair<std::string, int>> result;
+        result.reserve(std::min(topk1.size(), topk2.size()));
+
+        for (const auto &p : *large)
+        {
+            auto it = map.find(p.first);
+            if (it != map.end())
+            {
+                int combined = it->second * p.second;
+                result.emplace_back(p.first, combined);
+            }
+        }
+
+        std::sort(result.begin(), result.end(),
+                  [](const auto &a, const auto &b)
+                  { return a.first < b.first; });
+
+        return result;
+    }
+
     // Should be static or non-class member
+    // Method assumes that both are sorted by first (sort merge approach)
     std::vector<std::pair<double, int>> TableStatistics::intersect_top_k(
         const std::vector<std::pair<double, int>> &topk1,
         const std::vector<std::pair<double, int>> &topk2)
     {
-        std::unordered_map<double, int> freqMap2;
-        for (const auto &entry : topk2) {
-            freqMap2[entry.first] = entry.second;
-        }
         std::vector<std::pair<double, int>> result;
-        for (const auto &entry : topk1) {
-            auto it = freqMap2.find(entry.first);
-            if (it != freqMap2.end()) {
-                result.emplace_back(entry.first, entry.second * it->second);
+        result.reserve(std::min(topk1.size(), topk2.size()));
+
+        std::size_t i = 0, j = 0;
+        int max_freq = 0;
+
+        while (i < topk1.size() && j < topk2.size())
+        {
+            double key1 = topk1[i].first;
+            double key2 = topk2[j].first;
+
+            if (key1 == key2)
+            {
+                int combined_freq = topk1[i].second * topk2[j].second;
+                result.emplace_back(key1, combined_freq);
+                max_freq = std::max(max_freq, combined_freq);
+                ++i;
+                ++j;
+            }
+            else if (key1 < key2)
+            {
+                ++i;
+            }
+            else
+            {
+                ++j;
             }
         }
-        std::sort(result.begin(), result.end(), [](const auto &a, const auto &b) {
-            return a.second > b.second;
-        });
         return result;
     }
 
     ColumnHistogram TableStatistics::multiply_histograms(const std::string &left_col, const std::string &right_col) const
     {
-        #ifndef DISABLE_HISTOGRAMS
+#ifndef DISABLE_HISTOGRAMS
         auto left_hist = get_histogram(left_col);
         auto right_hist = get_histogram(right_col);
 
@@ -527,9 +640,9 @@ void TableStatistics::compute(const Table &table)
         }
 
         return left_hist->multiply(*right_hist);
-        #else
+#else
         return ColumnHistogram();
-        #endif
+#endif
     }
 
     TableStatistics TableStatistics::merge_for_join(const TableStatistics &other) const
@@ -546,8 +659,7 @@ void TableStatistics::compute(const Table &table)
         HISTOGRAM_OP(
             result.histograms = histograms;
             for (auto &kv : other.histograms)
-                result.histograms[kv.first] = kv.second;
-        )
+                result.histograms[kv.first] = kv.second;)
 
         result.distinct_counts = distinct_counts;
         for (auto &kv : other.distinct_counts)
@@ -558,13 +670,16 @@ void TableStatistics::compute(const Table &table)
             result.most_frequent_values[kv.first] = kv.second;
 
         result.value_frequencies = value_frequencies;
-        for (auto &kv : other.value_frequencies) {
+        for (auto &kv : other.value_frequencies)
+        {
             result.value_frequencies[kv.first] = kv.second;
         }
 
         result.sorted_value_frequencies = sorted_value_frequencies;
-        for (auto &kv : other.sorted_value_frequencies) {
-            if (result.sorted_value_frequencies.find(kv.first) == result.sorted_value_frequencies.end()) {
+        for (auto &kv : other.sorted_value_frequencies)
+        {
+            if (result.sorted_value_frequencies.find(kv.first) == result.sorted_value_frequencies.end())
+            {
                 result.sorted_value_frequencies[kv.first] = kv.second;
             }
         }
@@ -678,7 +793,6 @@ void TableStatistics::compute(const Table &table)
             return *this;
         }
 
-        
         ColumnHistogram result;
         result.min = min;
         result.max = threshold;
@@ -718,7 +832,7 @@ void TableStatistics::compute(const Table &table)
                     double old_bin_total_width = old_bin_end - old_bin_start;
                     if (old_bin_total_width <= 0)
                     {
-                        continue; 
+                        continue;
                     }
                     double kept_fraction = old_bin_kept_width / old_bin_total_width;
                     std::size_t old_bin_kept_count = static_cast<std::size_t>(bins[old_bin] * kept_fraction);
@@ -759,11 +873,11 @@ void TableStatistics::compute(const Table &table)
 
         double old_bin_width = (max - min) / bins.size();
         std::size_t target_bin = static_cast<std::size_t>((value - min) / old_bin_width);
-        target_bin = std::min(target_bin, bins.size() - 1); 
+        target_bin = std::min(target_bin, bins.size() - 1);
 
         if (bins[target_bin] > 0 && num_distinct > 0)
         {
-            
+
             double distinct_per_bin = double(num_distinct) / double(bins.size());
 
             if (distinct_per_bin > 1.0)
@@ -796,7 +910,7 @@ void TableStatistics::compute(const Table &table)
     {
         TableStatistics result = *this;
 
-        #ifndef DISABLE_HISTOGRAMS
+#ifndef DISABLE_HISTOGRAMS
         if (histograms.empty() || target_cardinality == 0)
         {
             return result;
@@ -806,7 +920,7 @@ void TableStatistics::compute(const Table &table)
         {
             if (!hist.is_valid() || hist.total_count == 0 || hist.total_count == target_cardinality)
             {
-                continue; 
+                continue;
             }
 
             double hist_scale_factor = double(target_cardinality) / double(hist.total_count);
@@ -850,7 +964,7 @@ void TableStatistics::compute(const Table &table)
                 sel = double(result.distinct_counts.at(col_name)) / double(result.row_count);
             }
         }
-        #endif
+#endif
         return result;
     }
 
@@ -859,99 +973,99 @@ void TableStatistics::compute(const Table &table)
     {
         TableStatistics result = *this;
 
-        #ifndef DISABLE_HISTOGRAMS
+#ifndef DISABLE_HISTOGRAMS
 
-            for (const auto &clause : cnf_condition)
+        for (const auto &clause : cnf_condition)
+        {
+            if (clause.size() != 1)
             {
-                if (clause.size() != 1)
+                continue;
+            }
+
+            const auto &predicate = clause[0];
+
+            if (predicate.negative())
+            {
+                continue;
+            }
+
+            if (auto binary_expr = cast<const ast::BinaryExpr>(&predicate.expr()))
+            {
+
+                auto lhs = cast<const ast::Designator>(binary_expr->lhs.get());
+                if (!lhs || !lhs->has_table_name())
                 {
                     continue;
                 }
 
-                const auto &predicate = clause[0];
+                std::string table_col = std::string(*lhs->table_name.text) + "." +
+                                        std::string(*lhs->attr_name.text);
 
-                if (predicate.negative())
+                auto hist_it = result.histograms.find(table_col);
+                if (hist_it == result.histograms.end())
                 {
                     continue;
                 }
 
-                if (auto binary_expr = cast<const ast::BinaryExpr>(&predicate.expr()))
+                if (auto constant = cast<const ast::Constant>(binary_expr->rhs.get()))
                 {
 
-                    auto lhs = cast<const ast::Designator>(binary_expr->lhs.get());
-                    if (!lhs || !lhs->has_table_name())
+                    std::ostringstream oss;
+                    oss << *constant;
+                    std::string value_str = oss.str();
+
+                    double filter_value;
+                    try
+                    {
+                        filter_value = std::stod(value_str);
+                    }
+                    catch (const std::exception &)
                     {
                         continue;
                     }
 
-                    std::string table_col = std::string(*lhs->table_name.text) + "." +
-                                            std::string(*lhs->attr_name.text);
-
-                    auto hist_it = result.histograms.find(table_col);
-                    if (hist_it == result.histograms.end())
+                    ColumnHistogram filtered_hist;
+                    switch (binary_expr->op().type)
                     {
+                    case TK_LESS:
+                        filtered_hist = hist_it->second.filter_less_than(filter_value);
+                        break;
+                    case TK_LESS_EQUAL:
+                        filtered_hist = hist_it->second.filter_less_than(filter_value);
+                        break;
+                    case TK_GREATER:
+                        filtered_hist = hist_it->second.filter_greater_than(filter_value);
+                        break;
+                    case TK_GREATER_EQUAL:
+                        filtered_hist = hist_it->second.filter_greater_than(filter_value);
+                        break;
+                    case TK_EQUAL:
+                        filtered_hist = hist_it->second.filter_equal(filter_value);
+                        break;
+                    default:
                         continue;
                     }
 
-                    if (auto constant = cast<const ast::Constant>(binary_expr->rhs.get()))
-                    {
-
-                        std::ostringstream oss;
-                        oss << *constant;
-                        std::string value_str = oss.str();
-
-                        double filter_value;
-                        try
-                        {
-                            filter_value = std::stod(value_str);
-                        }
-                        catch (const std::exception &)
-                        {
-                            continue;
-                        }
-
-                        ColumnHistogram filtered_hist;
-                        switch (binary_expr->op().type)
-                        {
-                        case TK_LESS:
-                            filtered_hist = hist_it->second.filter_less_than(filter_value);
-                            break;
-                        case TK_LESS_EQUAL:
-                            filtered_hist = hist_it->second.filter_less_than(filter_value);
-                            break;
-                        case TK_GREATER:
-                            filtered_hist = hist_it->second.filter_greater_than(filter_value);
-                            break;
-                        case TK_GREATER_EQUAL:
-                            filtered_hist = hist_it->second.filter_greater_than(filter_value);
-                            break;
-                        case TK_EQUAL:
-                            filtered_hist = hist_it->second.filter_equal(filter_value);
-                            break;
-                        default:
-                            continue;
-                        }
-
-                        hist_it->second = filtered_hist;
-                    }
+                    hist_it->second = filtered_hist;
                 }
             }
+        }
 
-            std::size_t min_cardinality = std::numeric_limits<std::size_t>::max();
-            for (const auto &[col_name, hist] : result.histograms)
+        std::size_t min_cardinality = std::numeric_limits<std::size_t>::max();
+        for (const auto &[col_name, hist] : result.histograms)
+        {
+            if (hist.is_valid() && hist.total_count > 0 && hist.total_count < min_cardinality)
             {
-                if (hist.is_valid() && hist.total_count > 0 && hist.total_count < min_cardinality)
-                {
-                    min_cardinality = hist.total_count;
-                }
+                min_cardinality = hist.total_count;
             }
+        }
 
-            // Only rescale if we found valid histograms
-            if (min_cardinality != std::numeric_limits<std::size_t>::max())
-            {
-                return result.rescale_histograms_to_cardinality(min_cardinality);
-            }
-        #endif
+        // Only rescale if we found valid histograms
+        if (min_cardinality != std::numeric_limits<std::size_t>::max())
+        {
+            return result.rescale_histograms_to_cardinality(min_cardinality);
+        }
+#endif
         return result;
     }
 
@@ -965,14 +1079,14 @@ void TableStatistics::compute(const Table &table)
         std::size_t estimated_groups = 1;
         for (const std::string &col : group_columns)
         {
-            #ifndef DISABLE_HISTOGRAMS
+#ifndef DISABLE_HISTOGRAMS
             const auto *hist = get_histogram(col);
             if (hist && hist->is_valid())
             {
                 estimated_groups *= hist->num_distinct;
             }
             else
-            #endif
+#endif
             {
                 estimated_groups *= row_count;
             }
@@ -987,7 +1101,7 @@ void TableStatistics::compute(const Table &table)
 
         result.row_count = estimate_group_by_cardinality(group_columns);
 
-        #ifndef DISABLE_HISTOGRAMS
+#ifndef DISABLE_HISTOGRAMS
         for (auto &[col_name, histogram] : result.histograms)
         {
             if (std::find(group_columns.begin(), group_columns.end(), col_name) != group_columns.end())
@@ -1006,92 +1120,82 @@ void TableStatistics::compute(const Table &table)
                 }
             }
         }
-        #endif
-        return result;
-    }
-    std::vector<std::pair<double,int>> TableStatistics::filter_top_k_range(
-        const std::vector<std::pair<double,int>> &topk, double low, double high) const
-    {
-        if(topk.empty())
-            return topk;
-            
-        double current_min = std::numeric_limits<double>::max();
-        double current_max = std::numeric_limits<double>::lowest();
-        for (const auto &p : topk) {
-            current_min = std::min(current_min, p.first);
-            current_max = std::max(current_max, p.first);
-        }
-        if(low <= current_min && high >= current_max)
-            return topk;
-            
-        std::vector<std::pair<double,int>> result;
-        for (const auto &p : topk) {
-            if(p.first >= low && p.first <= high)
-                result.push_back(p);
-        }
-        std::sort(result.begin(), result.end(), 
-                [](const std::pair<double,int>& a, const std::pair<double,int>& b) {
-                    return a.second > b.second;
-                });
+#endif
         return result;
     }
 
-    std::vector<std::pair<double,int>> TableStatistics::filter_top_k_greater_than(
-        const std::vector<std::pair<double,int>> &topk, double threshold) const
+    std::vector<std::pair<double, int>>
+    TableStatistics::filter_top_k_range(
+        const std::vector<std::pair<double, int>> &topk, double low, double high) const
     {
-        if(topk.empty())
+        if (topk.empty())
             return topk;
-            
-        double current_min = std::numeric_limits<double>::max();
-        double current_max = std::numeric_limits<double>::lowest();
-        for (const auto &p : topk) {
-            current_min = std::min(current_min, p.first);
-            current_max = std::max(current_max, p.first);
-        }
-        if(threshold <= current_min)
+
+        const double current_min = topk.front().first;
+        const double current_max = topk.back().first;
+
+        if (low <= current_min && high >= current_max)
             return topk;
-        if(threshold > current_max)
+        if (high < current_min || low > current_max)
             return {};
 
-        std::vector<std::pair<double,int>> result;
-        for (const auto &p : topk) {
-            if(p.first >= threshold)
-                result.push_back(p);
-        }
-        std::sort(result.begin(), result.end(),
-                [](const std::pair<double,int>& a, const std::pair<double,int>& b) {
-                    return a.second > b.second;
-                });
-        return result;
+        auto lower = std::lower_bound(
+            topk.begin(), topk.end(), low,
+            [](const auto &a, double value)
+            { return a.first < value; });
+
+        auto upper = std::upper_bound(
+            topk.begin(), topk.end(), high,
+            [](double value, const auto &a)
+            { return value < a.first; });
+
+        return std::vector<std::pair<double, int>>(lower, upper);
     }
 
-    std::vector<std::pair<double,int>> TableStatistics::filter_top_k_less_than(
-        const std::vector<std::pair<double,int>> &topk, double threshold) const
+    std::vector<std::pair<double, int>>
+    TableStatistics::filter_top_k_greater_than(
+        const std::vector<std::pair<double, int>> &topk, double threshold) const
     {
-        if(topk.empty())
+        if (topk.empty())
             return topk;
-            
-        double current_min = std::numeric_limits<double>::max();
-        double current_max = std::numeric_limits<double>::lowest();
-        for (const auto &p : topk) {
-            current_min = std::min(current_min, p.first);
-            current_max = std::max(current_max, p.first);
-        }
-        if(threshold >= current_max)
+
+        const double current_min = topk.front().first;
+        const double current_max = topk.back().first;
+
+        if (threshold <= current_min)
             return topk;
-        if(threshold < current_min)
+        if (threshold > current_max)
             return {};
 
-        std::vector<std::pair<double,int>> result;
-        for (const auto &p : topk) {
-            if(p.first <= threshold)
-                result.push_back(p);
-        }
-        std::sort(result.begin(), result.end(),
-                [](const std::pair<double,int>& a, const std::pair<double,int>& b) {
-                    return a.second > b.second;
-                });
-        return result;
+        auto it = std::lower_bound(
+            topk.begin(), topk.end(), threshold,
+            [](const auto &a, double value)
+            { return a.first < value; });
+
+        return std::vector<std::pair<double, int>>(it, topk.end());
+    }
+
+    std::vector<std::pair<double, int>>
+    TableStatistics::filter_top_k_less_than(
+        const std::vector<std::pair<double, int>> &topk, double threshold) const
+    {
+        if (topk.empty())
+            return topk;
+
+        const double current_min = topk.front().first;
+        const double current_max = topk.back().first;
+
+        if (threshold >= current_max)
+            return topk;
+        if (threshold < current_min)
+            return {};
+
+        auto it = std::upper_bound(
+            topk.begin(), topk.end(), threshold,
+            [](double value, const auto &a)
+            { return value < a.first; });
+
+        return std::vector<std::pair<double, int>>(topk.begin(), it);
     }
 
     TableStatistics TableStatistics::reduce_top_k_by_cnf(const cnf::CNF &cnf_condition) const
@@ -1121,40 +1225,43 @@ void TableStatistics::compute(const Table &table)
 
                 if (auto constant = cast<const ast::Constant>(binary_expr->rhs.get()))
                 {
-                    std::ostringstream oss;
-                    oss << *constant;
-                    std::string value_str = oss.str();
                     double filter_value;
                     try
                     {
-                        filter_value = std::stod(value_str);
+                        std::ostringstream oss;
+                        oss << *constant;
+                        filter_value = std::stod(oss.str());
                     }
-                    catch (const std::exception &)
+                    catch (...)
                     {
                         continue;
                     }
 
-                    std::vector<std::pair<double,int>> filtered_topk;
+                    std::vector<std::pair<double, int>> filtered_topk;
+
                     switch (binary_expr->op().type)
                     {
-                        case TK_LESS:
-                        case TK_LESS_EQUAL:
-                            filtered_topk = filter_top_k_less_than(topk_it->second, filter_value);
-                            break;
-                        case TK_GREATER:
-                        case TK_GREATER_EQUAL:
-                            filtered_topk = filter_top_k_greater_than(topk_it->second, filter_value);
-                            break;
-                        case TK_EQUAL:
-                        {
-                            double eps = 1e-6;
-                            filtered_topk = filter_top_k_range(topk_it->second, filter_value - eps, filter_value + eps);
-                            break;
-                        }
-                        default:
-                            continue;
+                    case TK_LESS:
+                    case TK_LESS_EQUAL:
+                        filtered_topk = filter_top_k_less_than(topk_it->second, filter_value);
+                        break;
+                    case TK_GREATER:
+                    case TK_GREATER_EQUAL:
+                        filtered_topk = filter_top_k_greater_than(topk_it->second, filter_value);
+                        break;
+                    case TK_EQUAL:
+                    {
+                        double eps = 1e-6;
+                        filtered_topk = filter_top_k_range(topk_it->second,
+                                                           filter_value - eps,
+                                                           filter_value + eps);
+                        break;
                     }
-                    result.sorted_value_frequencies[table_col] = filtered_topk;
+                    default:
+                        continue;
+                    }
+
+                    result.sorted_value_frequencies[table_col] = std::move(filtered_topk);
                 }
             }
         }

@@ -136,14 +136,14 @@ namespace m
                                 if (card_data)
                                 {
                                     if (CardinalityStorage::Get().debug_output())
-                                        std::cout << "Found adjustment rate: " << card_data->adjustment_factor << std::endl;
-                                        std::cout << "Lower bound adjustment factor: " << card_data->lower_bound_adjustment_factor << std::endl;
-                                        std::cout << "Upper bound adjustment factor: " << card_data->upper_bound_adjustment_factor << std::endl;
+                                    {
+                                        auto true_card = card_data->get_cardinality();
+                                        std::cout << "Found matching stored cardinality" << true_card << std::endl;
 
-                                    PT[joined].model->size *= card_data->adjustment_factor;
-                                    PT[joined].model->range.first = static_cast<std::size_t>(PT[joined].model->range.first * card_data->lower_bound_adjustment_factor);
-                                    PT[joined].model->range.second = static_cast<std::size_t>(PT[joined].model->range.second * card_data->upper_bound_adjustment_factor);
-
+                                        PT[joined].model->size = true_card;
+                                        PT[joined].model->range.first = true_card;
+                                        PT[joined].model->range.second = true_card;
+                                    }
                                 }
 
                                 double C_joined = CE.predict_cardinality(*PT[joined].model);
@@ -292,18 +292,19 @@ namespace m
                                 if (card_data)
                                 {
                                     if (CardinalityStorage::Get().debug_output())
-                                        std::cout << "Found adjustment rate: " << card_data->adjustment_factor << std::endl;
-                                        std::cout << "Lower bound adjustment factor: " << card_data->lower_bound_adjustment_factor << std::endl;
-                                        std::cout << "Upper bound adjustment factor: " << card_data->upper_bound_adjustment_factor << std::endl;
+                                    {
+                                        auto true_card = card_data->get_cardinality();
+                                        std::cout << "Found matching stored cardinality: " << true_card << std::endl;
 
-                                    PT[joined].model->size *= card_data->adjustment_factor;
-                                    PT[joined].model->range.first = static_cast<std::size_t>(PT[joined].model->range.first * card_data->lower_bound_adjustment_factor);
-                                    PT[joined].model->range.second = static_cast<std::size_t>(PT[joined].model->range.second * card_data->upper_bound_adjustment_factor);
-                                    current_range = PT[joined].model->get_range();
+                                        PT[joined].model->size = true_card;
+                                        PT[joined].model->range.first = true_card;
+                                        PT[joined].model->range.second = true_card;
+                                        current_range = PT[joined].model->get_range();
+                                    }
                                 }
                                 else
                                 {
-                                    current_range= PT[joined].model->get_range();
+                                    current_range = PT[joined].model->get_range();
                                 }
 
                                 if (comparer_->compare(current_range, best_range))
@@ -331,6 +332,20 @@ namespace m
                     static cnf::CNF condition;
                     PT.update(G, CE, CF, left, right, condition); }, PT, G, M, CF, CE, begin, end);
             }
+
+            template <typename PlanTable>
+            void operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const CostFunction &CF) const;
+        };
+
+        struct M_EXPORT DPsizeOptRange final : PlanEnumeratorCRTP<DPsizeOptRange>
+        {
+            using base_type = PlanEnumeratorCRTP<DPsizeOptRange>;
+            using base_type::operator();
+
+            std::unique_ptr<RangeComparer> comparer_ = GetRangeComparer_();
+
+            std::shared_ptr<RangeAdjustmentStrategy> range_adjustment_strategy_ =
+                std::make_shared<TightenBoundsStrategy>(0.4);
 
             template <typename PlanTable>
             void operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const CostFunction &CF) const;

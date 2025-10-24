@@ -844,6 +844,117 @@ void RangeGOO::operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, con
 }
 
 /*======================================================================================================================
+ * DPsizeOptRange
+ *====================================================================================================================*/
+template <typename PlanTable>
+void DPsizeOptRange::operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const CostFunction &CF) const
+{
+    auto &sources = G.sources();
+    std::size_t n = sources.size();
+    const AdjacencyMatrix &M = G.adjacency_matrix();
+    auto &CE = Catalog::Get().get_database_in_use().cardinality_estimator();
+    CardinalityStorage::Get().update_current_table_names(G);
+    CardinalityStorage::Get().extract_all_filters_as_strings(G);
+
+    for (std::size_t s = 2; s <= n; ++s)
+    {
+        std::size_t m = s / 2;
+        for (std::size_t s1 = 1; s1 <= m; ++s1)
+        {
+            std::size_t s2 = s - s1;
+            if (s1 == s2)
+            {
+                for (auto S1 = GospersHack::enumerate_all(s1, n); S1; ++S1)
+                {
+                    if (not PT.has_plan(*S1))
+                        continue;
+                    GospersHack S2 = GospersHack::enumerate_from(*S1, n);
+                    for (++S2; S2; ++S2)
+                    {
+                        if (not PT.has_plan(*S2))
+                            continue;
+                        if (*S1 & *S2)
+                            continue;
+                        if (not M.is_connected(*S1, *S2))
+                            continue;
+
+                        const Subproblem joined = *S1 | *S2;
+                        cnf::CNF condition;
+
+                        if (not PT[joined].model)
+                            PT[joined].model = CE.estimate_join(G, *PT[*S1].model, *PT[*S2].model, condition);
+
+                        std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().has_stored_cardinality(joined);
+                        if (card_data)
+                        {
+                            auto true_card = card_data->get_cardinality();
+                            if (CardinalityStorage::Get().debug_output())
+                                std::cout << "Found stored cardinality: " << true_card << std::endl;
+
+                            PT[joined].model->size = true_card;
+                            PT[joined].model->range.first = true_card;
+                            PT[joined].model->range.second = true_card;
+                        }
+                        else
+                        {
+                            auto range = PT[joined].model->get_range();
+                            double collapsed_estimate = comparer_->collapse(range);
+                            PT[joined].model->size = collapsed_estimate;
+                        }
+
+                        PT.update(G, CE, CF, *S1, *S2, condition);
+                    }
+                }
+            }
+            else
+            {
+                for (auto S1 = GospersHack::enumerate_all(s1, n); S1; ++S1)
+                {
+                    if (not PT.has_plan(*S1))
+                        continue; 
+                    for (auto S2 = GospersHack::enumerate_all(s2, n); S2; ++S2)
+                    {
+                        if (not PT.has_plan(*S2))
+                            continue;
+                        if (*S1 & *S2)
+                            continue;
+                        if (not M.is_connected(*S1, *S2))
+                            continue;
+
+                        const Subproblem joined = *S1 | *S2;
+                        cnf::CNF condition;
+
+                        if (not PT[joined].model)
+                            PT[joined].model = CE.estimate_join(G, *PT[*S1].model, *PT[*S2].model, condition);
+
+                        std::shared_ptr<const CardinalityData> card_data = CardinalityStorage::Get().has_stored_cardinality(joined);
+                        if (card_data)
+                        {
+                            auto true_card = card_data->get_cardinality();
+                            if (CardinalityStorage::Get().debug_output())
+                                std::cout << "Found stored cardinality: " << true_card << std::endl;
+
+                            PT[joined].model->size = true_card;
+                            PT[joined].model->range.first = true_card;
+                            PT[joined].model->range.second = true_card;
+                        }
+                        else
+                        {
+                            auto range = PT[joined].model->get_range();
+                            double collapsed_estimate = comparer_->collapse(range);
+                            PT[joined].model->size = collapsed_estimate;
+                        }
+
+                        PT.update(G, CE, CF, *S1, *S2, condition);
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+/*======================================================================================================================
  * TDGOO
  *====================================================================================================================*/
 
@@ -870,6 +981,7 @@ void TDGOO::operator()(enumerate_tag, PlanTable &PT, const QueryGraph &G, const 
     X(DPccp, "enumerates connected subgraph complement pairs")                                                        \
     X(DPsize, "size-based subproblem enumeration")                                                                    \
     X(DPsizeOpt, "optimized DPsize: does not enumerate symmetric subproblems")                                        \
+    X(DPsizeOptRange, "range-based DPsizeOpt: uses range comparison and learned cardinalities")                       \
     X(DPsizeSub, "DPsize with enumeration of subset complement pairs")                                                \
     X(DPsub, "subset-based subproblem enumeration")                                                                   \
     X(DPsubOpt, "optimized DPsub: does not enumerate symmetric subproblems")                                          \

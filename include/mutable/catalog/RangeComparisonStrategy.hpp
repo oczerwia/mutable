@@ -37,29 +37,42 @@ struct LowerBoundComparer : public RangeComparer
 };
 
 
-struct MeanUncertaintyComparer : public RangeComparer
+struct MeanComparer : public RangeComparer
 {
-    double uncertainty_weight;
-    MeanUncertaintyComparer(double uncertainty_weight = 0.3)
-        : uncertainty_weight(uncertainty_weight) {}
-
     bool compare(const std::pair<double, double> &a, const std::pair<double, double> &b) const override
     {
+        double mean_a = (a.first + a.second) / 2.0;
+        double mean_b = (b.first + b.second) / 2.0;
+        return mean_a < mean_b;
+    }
+    double collapse(const std::pair<double, double> &a) override
+    {
+        return (a.first + a.second) / 2.0;
+    }
+};
+
+struct MeanUncertaintyComparer : public RangeComparer
+{
+    bool compare(const std::pair<double, double> &a, const std::pair<double, double> &b) const override
+    {
+        double uncertainty_weight = m::Options::Get().uncertainty_impact;
         double mean_a = (a.first + a.second) / 2.0;
         double mean_b = (b.first + b.second) / 2.0;
         double unc_a = a.second - a.first;
         double unc_b = b.second - b.first;
 
-        // Lower score is better
         double score_a = (1.0 - uncertainty_weight) * mean_a + uncertainty_weight * unc_a;
         double score_b = (1.0 - uncertainty_weight) * mean_b + uncertainty_weight * unc_b;
 
         return score_a < score_b;
     }
     double collapse(const std::pair<double, double> &a){
-        return (a.first + a.second) / 2;
+        double uncertainty_weight = m::Options::Get().uncertainty_impact;
+        double mean = (a.first + a.second) / 2.0;
+        double unc = a.second - a.first;
+        double score = (1.0 - uncertainty_weight) * mean + uncertainty_weight * unc;
+        return score;
     }
-
 };
 
 inline std::unique_ptr<RangeComparer> GetRangeComparer_() {
@@ -68,8 +81,10 @@ inline std::unique_ptr<RangeComparer> GetRangeComparer_() {
         return std::make_unique<UpperBoundComparer>();
     } else if (std::string(strategy) == "LowerBound") {
         return std::make_unique<LowerBoundComparer>();
-    } else if (std::string(strategy) == "Mean") {
+    } else if (std::string(strategy) == "Uncertainty") {
         return std::make_unique<MeanUncertaintyComparer>();
+    } else if (std::string(strategy) == "Mean") {
+        return std::make_unique<MeanComparer>();
     } else {
         return std::make_unique<UpperBoundComparer>();
     }

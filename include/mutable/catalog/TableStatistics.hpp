@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <set>
 #include <mutable/Options.hpp>
-#include <mutable/IR/Tuple.hpp> 
+#include <mutable/IR/Tuple.hpp>
 
 namespace m
 {
@@ -134,7 +134,7 @@ namespace m
 
         std::unordered_map<std::string, double> column_min;
         std::unordered_map<std::string, double> column_max;
-        
+
         std::unordered_map<std::string, double> selectivity;
         // Histograms ONLY for numeric columns (table_name.column_name format)
         std::unordered_map<std::string, ColumnHistogram> histograms;
@@ -142,6 +142,8 @@ namespace m
 
         std::unordered_map<std::string, std::unordered_map<Value, int>> value_frequencies;
         std::unordered_map<std::string, std::vector<std::pair<double, int>>> sorted_value_frequencies;
+
+        std::unordered_map<std::string, std::vector<std::pair<std::string, int>>> sorted_string_value_frequencies;
 
         std::unordered_map<std::string, double> max_multiplicity_per_value;
 
@@ -156,18 +158,21 @@ namespace m
 
         void extract_column_names(const Table &table);
 
-        std::vector<std::pair<double, int>> top_k_values(const std::string& table_col, std::size_t k) const;
+        std::vector<std::pair<double, int>> top_k_values(const std::string &table_col, std::size_t k) const;
+        std::vector<std::pair<std::string, int>> top_k_string_values(const std::string &table_col, std::size_t k) const;
         std::vector<std::pair<double, int>> intersect_top_k(const std::vector<std::pair<double, int>> &topk1,
                                                             const std::vector<std::pair<double, int>> &topk2);
-        
+        std::vector<std::pair<std::string, int>> intersect_top_k_string(const std::vector<std::pair<std::string, int>> &topk1,
+                                                                        const std::vector<std::pair<std::string, int>> &topk2) const;
+
         std::vector<std::pair<double, int>> filter_top_k_range(
-            const std::vector<std::pair<double,int>> &topk, double low, double high) const;
+            const std::vector<std::pair<double, int>> &topk, double low, double high) const;
 
         std::vector<std::pair<double, int>> filter_top_k_greater_than(
-            const std::vector<std::pair<double,int>> &topk, double threshold) const;
+            const std::vector<std::pair<double, int>> &topk, double threshold) const;
 
         std::vector<std::pair<double, int>> filter_top_k_less_than(
-            const std::vector<std::pair<double,int>> &topk, double threshold) const;
+            const std::vector<std::pair<double, int>> &topk, double threshold) const;
 
         TableStatistics reduce_top_k_by_cnf(const cnf::CNF &cnf_condition) const;
 
@@ -215,9 +220,9 @@ namespace m
          */
         TableStatistics apply_group_by(const std::vector<std::string> &group_columns) const;
     };
-    
+
     std::unordered_map<Value, int> intersect_value_frequencies(
-            const std::unordered_map<Value, int>& left,
-            const std::unordered_map<Value, int>& right);
+        const std::unordered_map<Value, int> &left,
+        const std::unordered_map<Value, int> &right);
 
 }; // namespace m

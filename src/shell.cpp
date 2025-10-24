@@ -417,6 +417,12 @@ int main(int argc, const char **argv)
     "Number of highest value frequencies to include into the top-k datastructure", // testing on 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536
     [&](int val) { Options::Get().top_k = val; });
 
+    
+    ADD(double, Options::Get().uncertainty_impact, 0.5,
+    nullptr, "--uncertainty-impact",
+    "How much of the uncertainty range (upper-lower) is added to the mean during the plan enumeration (0.0 not at all - 0.5 == upper bound)",
+    [&](double val) { Options::Get().uncertainty_impact = val; });
+
     ADD(const char*, Options::Get().collapse_function, nullptr ,
     nullptr, "--collapse-function",
     "Selects a collapse function for range based approaches (Choose between: Bound, LowerBound, Mean)",

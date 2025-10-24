@@ -26,10 +26,10 @@ export CXX="${LLVM_PATH}/bin/clang++"
 # mkdir -p "$BUILD_DIR"
 
 # Run CMake config
-cmake -S . -B "$BUILD_DIR" \
+cmake -S . -B "build/debug_shared" \
     -G Ninja \
-    -DCMAKE_C_COMPILER="$CC" \
-    -DCMAKE_CXX_COMPILER="$CXX" \
+    -DCMAKE_C_COMPILER="$(brew --prefix llvm@17)/bin/clang" \
+    -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@17)/bin/clang++" \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DCMAKE_BUILD_TYPE=Debug \
@@ -38,7 +38,7 @@ cmake -S . -B "$BUILD_DIR" \
     -DWITH_V8=OFF \
     -DENABLE_SANITIZERS=OFF \
     -DENABLE_SANITY_FIELDS=OFF \
-    -DBOOST_ROOT="$BOOST_PATH" \
+    -DBOOST_ROOT=$(brew --prefix boost) \
     -DUSE_LIBCXX=ON \
     $EXTRA_CMAKE_ARGS
 

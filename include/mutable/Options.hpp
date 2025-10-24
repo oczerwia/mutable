@@ -57,6 +57,7 @@ struct M_EXPORT Options
 
     int histogram_bins;
     int sample_size;
+    double uncertainty_impact;
 
     const char *collapse_function;
     // ***************************************
